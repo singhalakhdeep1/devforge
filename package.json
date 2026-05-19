@@ -1,0 +1,46 @@
+{
+    "name": "devhub-fullstack-platform",
+    "version": "1.0.0",
+    "description": "Complete full-stack developer collaboration platform",
+    "private": true,
+    "workspaces": [
+        "frontend",
+        "backend/api-gateway",
+        "backend/auth-service",
+        "backend/notification-service",
+        "backend/email-service",
+        "backend/file-service",
+        "backend/analytics-service",
+        "backend/shared",
+        "websocket-server"
+    ],
+    "scripts": {
+        "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run dev:ws\"",
+        "dev:backend": "concurrently \"npm run dev -w backend/api-gateway\" \"npm run dev -w backend/auth-service\" \"npm run dev -w backend/notification-service\" \"npm run dev -w backend/email-service\" \"npm run dev -w backend/file-service\" \"npm run dev -w backend/analytics-service\"",
+        "dev:frontend": "npm run dev -w frontend",
+        "dev:ws": "npm run dev -w websocket-server",
+        "build": "npm run build --workspaces",
+        "test": "npm run test --workspaces",
+        "test:backend": "npm run test --workspaces --workspace=backend/*",
+        "test:frontend": "npm run test -w frontend",
+        "test:e2e": "npm run test:e2e -w frontend",
+        "test:coverage": "npm run test:coverage --workspaces",
+        "lint": "npm run lint --workspaces",
+        "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+        "install:all": "npm install && npm install --workspaces",
+        "migrate": "npm run migrate -w backend/api-gateway && npm run migrate -w backend/auth-service",
+        "docker:dev": "docker-compose up -d",
+        "docker:prod": "docker-compose -f docker-compose.prod.yml up -d",
+        "docker:down": "docker-compose down"
+    },
+    "devDependencies": {
+        "@types/node": "^20.10.6",
+        "concurrently": "^8.2.2",
+        "prettier": "^3.1.1",
+        "typescript": "^5.3.3"
+    },
+    "engines": {
+        "node": ">=20.0.0",
+        "npm": ">=10.0.0"
+    }
+}

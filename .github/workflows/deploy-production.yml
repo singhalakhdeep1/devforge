@@ -1,0 +1,257 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  NODE_VERSION: '20'
+  AWS_REGION: 'us-east-1'
+
+jobs:
+  deploy-backend:
+    name: Deploy Backend Services
+    runs-on: ubuntu-latest
+    environment: 
+      name: ${{ inputs.environment || 'production' }}
+      url: https://api.devhub.com
+    
+    strategy:
+      matrix:
+        service:
+          - api-gateway
+          - auth-service
+          - email-service
+          - notification-service
+          - file-service
+          - analytics-service
+          - search-service
+          - video-service
+          - editor-service
+          - payment-service
+          - kanban-service
+          - graphql-api
+          - websocket-server
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      
+      - name: Build and push to ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/devhub-${{ matrix.service }}:$IMAGE_TAG ./backend/${{ matrix.service }}
+          docker tag $ECR_REGISTRY/devhub-${{ matrix.service }}:$IMAGE_TAG $ECR_REGISTRY/devhub-${{ matrix.service }}:latest
+          docker push $ECR_REGISTRY/devhub-${{ matrix.service }}:$IMAGE_TAG
+          docker push $ECR_REGISTRY/devhub-${{ matrix.service }}:latest
+      
+      - name: Update ECS service
+        run: |
+          aws ecs update-service \
+            --cluster devhub-${{ inputs.environment || 'production' }} \
+            --service ${{ matrix.service }} \
+            --force-new-deployment \
+            --region ${{ env.AWS_REGION }}
+      
+      - name: Wait for service stability
+        run: |
+          aws ecs wait services-stable \
+            --cluster devhub-${{ inputs.environment || 'production' }} \
+            --services ${{ matrix.service }} \
+            --region ${{ env.AWS_REGION }}
+
+  deploy-frontend:
+    name: Deploy Frontend
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment || 'production' }}
+      url: https://devhub.com
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+      
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: ${{ secrets.API_URL }}
+          NEXT_PUBLIC_WS_URL: ${{ secrets.WS_URL }}
+          NODE_ENV: production
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Deploy to S3
+        run: |
+          aws s3 sync frontend/out s3://${{ secrets.S3_BUCKET }} --delete
+      
+      - name: Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} \
+            --paths "/*"
+
+  run-migrations:
+    name: Run Database Migrations
+    runs-on: ubuntu-latest
+    needs: [deploy-backend]
+    environment: ${{ inputs.environment || 'production' }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      
+      - name: Run Prisma migrations
+        working-directory: backend
+        run: |
+          npx prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+  health-check:
+    name: Health Check
+    runs-on: ubuntu-latest
+    needs: [deploy-backend, deploy-frontend]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Wait for deployment
+        run: sleep 30
+      
+      - name: Check API Gateway health
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" https://api.devhub.com/health)
+          if [ $response -ne 200 ]; then
+            echo "Health check failed with status $response"
+            exit 1
+          fi
+          echo "Health check passed!"
+      
+      - name: Check Frontend
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" https://devhub.com)
+          if [ $response -ne 200 ]; then
+            echo "Frontend check failed with status $response"
+            exit 1
+          fi
+          echo "Frontend is live!"
+      
+      - name: Run smoke tests
+        run: |
+          chmod +x ./scripts/smoke-tests.sh
+          ./scripts/smoke-tests.sh https://api.devhub.com
+
+  rollback:
+    name: Rollback on Failure
+    runs-on: ubuntu-latest
+    needs: [health-check]
+    if: failure()
+    environment: ${{ inputs.environment || 'production' }}
+    
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Rollback ECS services
+        run: |
+          services=(api-gateway auth-service email-service notification-service file-service analytics-service search-service video-service editor-service payment-service kanban-service graphql-api websocket-server)
+          for service in "${services[@]}"; do
+            echo "Rolling back $service..."
+            aws ecs update-service \
+              --cluster devhub-${{ inputs.environment || 'production' }} \
+              --service $service \
+              --task-definition $(aws ecs describe-services \
+                --cluster devhub-${{ inputs.environment || 'production' }} \
+                --services $service \
+                --query 'services[0].taskDefinition' \
+                --output text | sed 's/:2$/:1/') \
+              --region ${{ env.AWS_REGION }}
+          done
+      
+      - name: Notify rollback
+        uses: 8398a7/action-slack@v3
+        with:
+          status: 'failure'
+          text: '🚨 Deployment failed and was rolled back!'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  notify-deployment:
+    name: Notify Deployment
+    runs-on: ubuntu-latest
+    needs: [health-check]
+    if: always()
+    
+    steps:
+      - name: Send Slack notification
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: |
+            🚀 Deployment to ${{ inputs.environment || 'production' }} ${{ job.status }}!
+            
+            Branch: ${{ github.ref_name }}
+            Commit: ${{ github.sha }}
+            Author: ${{ github.actor }}
+            
+            URL: https://devhub.com
+          webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          fields: repo,message,commit,author,took
+      
+      - name: Create GitHub deployment
+        uses: chrnorm/deployment-action@v2
+        with:
+          token: ${{ github.token }}
+          environment: ${{ inputs.environment || 'production' }}
+          environment-url: https://devhub.com
+          deployment-status: ${{ job.status }}
