@@ -1,29 +1,22 @@
 import { Router } from 'express'
 import { protect } from '../middleware/auth.middleware'
+import {
+  executeCode,
+  saveSnippet,
+  getSnippets,
+  getSnippetById,
+  updateSnippet,
+  deleteSnippet
+} from '../controllers/editor.controller'
 
 const router = Router()
 
-// Code execution endpoint
-router.post('/execute', protect, (req, res) => {
-    const { code, language } = req.body
-
-    // In production, use a sandboxed execution environment
-    // For now, return mock result
-    res.json({
-        success: true,
-        output: 'Code execution result would appear here',
-        executionTime: 123,
-    })
-})
-
-// Save code snippet
-router.post('/snippets', protect, (req, res) => {
-    res.json({ message: 'Save code snippet' })
-})
-
-// Get user snippets
-router.get('/snippets', protect, (req, res) => {
-    res.json({ message: 'Get user code snippets' })
-})
+// Protected routes
+router.post('/execute', protect, executeCode)
+router.post('/snippets', protect, saveSnippet)
+router.get('/snippets', protect, getSnippets)
+router.get('/snippets/:id', protect, getSnippetById)
+router.put('/snippets/:id', protect, updateSnippet)
+router.delete('/snippets/:id', protect, deleteSnippet)
 
 export default router

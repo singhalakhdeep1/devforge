@@ -1,18 +1,20 @@
 import { Router } from 'express'
 import { protect } from '../middleware/auth.middleware'
+import {
+  createDiscussion,
+  getDiscussionsByCourse,
+  getDiscussionById,
+  addAnswer,
+  upvoteAnswer
+} from '../controllers/discussion.controller'
 
 const router = Router()
 
-router.get('/', (req, res) => {
-    res.json({ message: 'Get all discussions' })
-})
-
-router.post('/', protect, (req, res) => {
-    res.json({ message: 'Create discussion' })
-})
-
-router.post('/:id/answer', protect, (req, res) => {
-    res.json({ message: `Answer discussion ${req.params.id}` })
-})
+// Protected routes
+router.post('/', protect, createDiscussion)
+router.get('/course/:courseId', protect, getDiscussionsByCourse)
+router.get('/:id', protect, getDiscussionById)
+router.post('/:id/answer', protect, addAnswer)
+router.post('/:discussionId/answer/:answerId/upvote', protect, upvoteAnswer)
 
 export default router

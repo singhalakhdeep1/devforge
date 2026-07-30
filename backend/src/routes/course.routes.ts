@@ -1,23 +1,30 @@
 import { Router } from 'express'
 import { protect } from '../middleware/auth.middleware'
+import {
+  getAllCourses,
+  getCourseById,
+  createCourse,
+  updateCourse,
+  deleteCourse,
+  enrollInCourse,
+  getEnrolledCourses,
+  getCourseProgress,
+  updateCourseProgress
+} from '../controllers/course.controller'
 
 const router = Router()
 
-// Placeholder routes
-router.get('/', (req, res) => {
-    res.json({ message: 'Get all courses' })
-})
+// Public routes
+router.get('/', getAllCourses)
+router.get('/:id', getCourseById)
 
-router.get('/:id', (req, res) => {
-    res.json({ message: `Get course ${req.params.id}` })
-})
-
-router.post('/', protect, (req, res) => {
-    res.json({ message: 'Create course' })
-})
-
-router.post('/:id/enroll', protect, (req, res) => {
-    res.json({ message: `Enroll in course ${req.params.id}` })
-})
+// Protected routes
+router.post('/', protect, createCourse)
+router.put('/:id', protect, updateCourse)
+router.delete('/:id', protect, deleteCourse)
+router.post('/:id/enroll', protect, enrollInCourse)
+router.get('/enrolled/my-courses', protect, getEnrolledCourses)
+router.get('/:id/progress', protect, getCourseProgress)
+router.post('/:id/progress', protect, updateCourseProgress)
 
 export default router

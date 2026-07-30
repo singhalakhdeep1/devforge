@@ -1,19 +1,20 @@
 import { Router } from 'express'
 import { protect } from '../middleware/auth.middleware'
+import {
+  getProfile,
+  updateProfile,
+  uploadAvatar,
+  changePassword,
+  deleteAccount
+} from '../controllers/user.controller'
 
 const router = Router()
 
-// Placeholder routes - implement controllers
-router.get('/', (req, res) => {
-    res.json({ message: 'Get all users' })
-})
-
-router.get('/profile', protect, (req, res) => {
-    res.json({ message: 'Get user profile' })
-})
-
-router.put('/profile', protect, (req, res) => {
-    res.json({ message: 'Update user profile' })
-})
+// Protected routes
+router.get('/profile', protect, getProfile)
+router.put('/profile', protect, updateProfile)
+router.post('/avatar', protect, uploadAvatar)
+router.post('/change-password', protect, changePassword)
+router.delete('/account', protect, deleteAccount)
 
 export default router
