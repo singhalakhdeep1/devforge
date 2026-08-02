@@ -1,0 +1,119 @@
+syntax = "proto3";
+
+package devforge;
+
+// Analytics service
+service Analytics {
+  rpc GetAnalytics(GetAnalyticsRequest) returns (GetAnalyticsResponse);
+}
+
+message GetAnalyticsRequest {
+  string userId = 1;
+  string startDate = 2;
+  string endDate = 3;
+}
+
+message GetAnalyticsResponse {
+  string userId = 1;
+  int32 pageViews = 2;
+  int32 uniqueVisitors = 3;
+  double bounceRate = 4;
+  int32 avgSessionDuration = 5;
+}
+
+// Editor service
+service Editor {
+  rpc SaveDocument(SaveDocumentRequest) returns (SaveDocumentResponse);
+  rpc GetDocument(GetDocumentRequest) returns (GetDocumentResponse);
+}
+
+message SaveDocumentRequest {
+  string documentId = 1;
+  string content = 2;
+  string title = 3;
+}
+
+message SaveDocumentResponse {
+  bool success = 1;
+  string documentId = 2;
+  string savedAt = 3;
+}
+
+message GetDocumentRequest {
+  string documentId = 1;
+}
+
+message GetDocumentResponse {
+  string documentId = 1;
+  string title = 2;
+  string content = 3;
+  string updatedAt = 4;
+}
+
+// Kanban service
+service Kanban {
+  rpc GetBoard(GetBoardRequest) returns (GetBoardResponse);
+  rpc CreateCard(CreateCardRequest) returns (CreateCardResponse);
+}
+
+message GetBoardRequest {
+  string boardId = 1;
+}
+
+message GetBoardResponse {
+  string boardId = 1;
+  string name = 2;
+  repeated Column columns = 3;
+}
+
+message Column {
+  string id = 1;
+  string name = 2;
+}
+
+message CreateCardRequest {
+  string columnId = 1;
+  string title = 2;
+  string description = 3;
+}
+
+message CreateCardResponse {
+  bool success = 1;
+  string cardId = 2;
+  string columnId = 3;
+}
+
+// Auth service
+service Auth {
+  rpc Login(LoginRequest) returns (LoginResponse);
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+}
+
+message LoginRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  bool success = 1;
+  string token = 2;
+  User user = 3;
+}
+
+message User {
+  string id = 1;
+  string email = 2;
+}
+
+message RegisterRequest {
+  string email = 1;
+  string password = 2;
+  string name = 3;
+}
+
+message RegisterResponse {
+  bool success = 1;
+  string userId = 2;
+  string email = 3;
+  string name = 4;
+}
