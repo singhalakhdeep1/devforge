@@ -1,3 +1,4 @@
+import './tracing';
 import express, { Application } from 'express';
 import dotenv from 'dotenv';
 import authRoutes from './routes/auth.routes';

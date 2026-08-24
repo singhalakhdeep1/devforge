@@ -1,3 +1,4 @@
+import './tracing';
 import express, { Application } from 'express';
 import mongoose from 'mongoose';
 import helmet from 'helmet';

@@ -57,6 +57,16 @@ services:
       timeout: 5s
       retries: 5
 
+  jaeger:
+    image: jaegertracing/all-in-one:1.51
+    container_name: devhub-jaeger
+    restart: unless-stopped
+    ports:
+      - "16686:16686"
+      - "14268:14268"
+    networks:
+      - devhub-network
+
 volumes:
   postgres_data:
   mongodb_data:
