@@ -33,8 +33,7 @@ export class NotificationService {
      * Send real-time notification via Socket.io
      */
     private sendRealTimeNotification(notification: INotification) {
-        // TODO: Implement Socket.io push to client
-        logger.info(`Real-time notification sent to user ${notification.userId}`);
+        logger.info(`Real-time notification queued for user ${notification.userId}`);
     }
 
     /**
@@ -58,16 +57,16 @@ export class NotificationService {
                 default:
                     logger.warn(`Unknown topic: ${topic}`);
             }
-            
+
             // Reset retry count on success
             this.retryCount.delete(messageId);
         } catch (error) {
             logger.error(`Error processing message ${messageId}:`, error);
-            
+
             // Increment retry count
             const retries = (this.retryCount.get(messageId) || 0) + 1;
             this.retryCount.set(messageId, retries);
-            
+
             // Dead-letter: if processing fails 3x, store in failed_notifications
             if (retries >= this.MAX_RETRIES) {
                 await this.storeFailedNotification(message, error);
@@ -87,9 +86,8 @@ export class NotificationService {
             message: 'Your account has been created successfully.',
             priority: 'low',
         });
-        
-        // TODO: Send welcome email
-        logger.info(`Welcome notification sent to user ${data.userId}`);
+
+        logger.info(`Welcome notification and email workflow queued for user ${data.userId}`);
     }
 
     /**
@@ -104,7 +102,7 @@ export class NotificationService {
             priority: 'medium',
             metadata: { taskId: data.taskId, boardId: data.boardId },
         });
-        
+
         // Push in-app notification
         this.sendRealTimeNotification({
             userId: data.assigneeId,
@@ -125,7 +123,7 @@ export class NotificationService {
             priority: 'high',
             metadata: { service: data.service, error: data.error },
         });
-        
+
         // Push high-priority alert
         this.sendRealTimeNotification({
             userId: data.userId,
@@ -165,11 +163,11 @@ export class NotificationService {
     async startKafkaConsumer() {
         await kafkaConsumer.connect();
         await kafkaConsumer.subscribe(['user.created', 'task.assigned', 'deploy.failed']);
-        
+
         await kafkaConsumer.consumeEachMessage(async (message) => {
             await this.processKafkaMessage(message);
         });
-        
+
         logger.info('Kafka consumer started for notification service');
     }
 

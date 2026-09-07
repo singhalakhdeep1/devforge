@@ -1,112 +1,30 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../../components/ui/card'
 import { Badge } from '../../components/ui/badge'
 import { Input } from '../../components/ui/input'
+import { getCourses, type Course } from '../../lib/api'
 
-interface Course {
-  id: number
-  title: string
-  description: string
-  instructor: string
-  rating: number
-  students: number
-  duration: string
-  level: string
-  price: number
-  category: string
-}
-
-const mockCourses: Course[] = [
-  {
-    id: 1,
-    title: 'Complete React Developer',
-    description: 'Learn React from scratch and build production-ready applications',
-    instructor: 'John Smith',
-    rating: 4.8,
-    students: 12500,
-    duration: '40 hours',
-    level: 'Beginner',
-    price: 99,
-    category: 'Frontend'
-  },
-  {
-    id: 2,
-    title: 'Node.js Masterclass',
-    description: 'Build scalable backend applications with Node.js and Express',
-    instructor: 'Sarah Johnson',
-    rating: 4.9,
-    students: 8700,
-    duration: '35 hours',
-    level: 'Intermediate',
-    price: 89,
-    category: 'Backend'
-  },
-  {
-    id: 3,
-    title: 'TypeScript Fundamentals',
-    description: 'Master TypeScript and write type-safe JavaScript code',
-    instructor: 'Mike Wilson',
-    rating: 4.7,
-    students: 6200,
-    duration: '25 hours',
-    level: 'Beginner',
-    price: 79,
-    category: 'Languages'
-  },
-  {
-    id: 4,
-    title: 'Advanced Database Design',
-    description: 'Learn database architecture, optimization, and scaling',
-    instructor: 'Emily Davis',
-    rating: 4.8,
-    students: 4500,
-    duration: '30 hours',
-    level: 'Advanced',
-    price: 109,
-    category: 'Database'
-  },
-  {
-    id: 5,
-    title: 'DevOps with Docker & Kubernetes',
-    description: 'Containerize and orchestrate applications like a pro',
-    instructor: 'Chris Brown',
-    rating: 4.9,
-    students: 7800,
-    duration: '45 hours',
-    level: 'Intermediate',
-    price: 119,
-    category: 'DevOps'
-  },
-  {
-    id: 6,
-    title: 'Full-Stack JavaScript',
-    description: 'Build complete web applications from frontend to backend',
-    instructor: 'Alex Turner',
-    rating: 4.6,
-    students: 15200,
-    duration: '50 hours',
-    level: 'Intermediate',
-    price: 129,
-    category: 'Full-Stack'
-  }
-]
+const CATEGORIES = ['All', 'Frontend', 'Backend', 'Languages', 'Database', 'DevOps', 'Full-Stack']
 
 export default function CoursesPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('All')
+  const [courses, setCourses] = useState<Course[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  const categories = ['All', 'Frontend', 'Backend', 'Languages', 'Database', 'DevOps', 'Full-Stack']
-
-  const filteredCourses = mockCourses.filter(course => {
-    const matchesSearch = course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         course.description.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesCategory = selectedCategory === 'All' || course.category === selectedCategory
-    return matchesSearch && matchesCategory
-  })
+  useEffect(() => {
+    setLoading(true)
+    setError(null)
+    getCourses({ category: selectedCategory, search: searchQuery })
+      .then(setCourses)
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setLoading(false))
+  }, [selectedCategory, searchQuery])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
@@ -142,7 +60,7 @@ export default function CoursesPage() {
             className="max-w-md"
           />
           <div className="flex gap-2 flex-wrap">
-            {categories.map(category => (
+            {CATEGORIES.map(category => (
               <Button
                 key={category}
                 variant={selectedCategory === category ? 'default' : 'outline'}
@@ -155,41 +73,51 @@ export default function CoursesPage() {
           </div>
         </div>
 
-        {/* Course Grid */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredCourses.map(course => (
-            <Card key={course.id} className="hover:shadow-lg transition-shadow">
-              <CardHeader>
-                <div className="flex items-start justify-between mb-2">
-                  <Badge variant="secondary">{course.category}</Badge>
-                  <Badge variant="outline">{course.level}</Badge>
-                </div>
-                <CardTitle className="text-xl">{course.title}</CardTitle>
-                <CardDescription>{course.description}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2 text-sm text-muted-foreground">
-                  <div className="flex items-center justify-between">
-                    <span>Instructor: {course.instructor}</span>
-                    <span className="flex items-center">⭐ {course.rating}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>👥 {course.students.toLocaleString()} students</span>
-                    <span>⏱️ {course.duration}</span>
-                  </div>
-                </div>
-              </CardContent>
-              <CardFooter className="flex items-center justify-between">
-                <div className="text-2xl font-bold text-indigo-600">${course.price}</div>
-                <Link href={`/courses/${course.id}`}>
-                  <Button>View Course</Button>
-                </Link>
-              </CardFooter>
-            </Card>
-          ))}
-        </div>
+        {/* States */}
+        {loading && (
+          <div className="text-center py-12 text-muted-foreground">Loading courses…</div>
+        )}
+        {error && (
+          <div className="text-center py-12 text-red-500">Failed to load courses: {error}</div>
+        )}
 
-        {filteredCourses.length === 0 && (
+        {/* Course Grid */}
+        {!loading && !error && (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {courses.map(course => (
+              <Card key={course.id} className="hover:shadow-lg transition-shadow">
+                <CardHeader>
+                  <div className="flex items-start justify-between mb-2">
+                    <Badge variant="secondary">{course.category}</Badge>
+                    <Badge variant="outline">{course.level}</Badge>
+                  </div>
+                  <CardTitle className="text-xl">{course.title}</CardTitle>
+                  <CardDescription>{course.description}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2 text-sm text-muted-foreground">
+                    <div className="flex items-center justify-between">
+                      <span>Instructor: {course.instructor}</span>
+                      <span className="flex items-center">⭐ {course.rating}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>👥 {course.students.toLocaleString()} students</span>
+                      <span>⏱️ {course.duration}</span>
+                    </div>
+                  </div>
+                </CardContent>
+                <CardFooter className="flex items-center justify-between">
+                  <div className="text-2xl font-bold text-indigo-600">${course.price}</div>
+                  <Link href={`/courses/${course.id}`}>
+                    <Button>View Course</Button>
+                  </Link>
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {!loading && !error && courses.length === 0 && (
           <div className="text-center py-12 text-muted-foreground">
             No courses found matching your criteria.
           </div>

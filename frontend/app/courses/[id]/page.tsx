@@ -1,116 +1,35 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Button } from '../../../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/ui/card'
 import { Badge } from '../../../components/ui/badge'
-import { Progress } from '../../../components/ui/progress'
 import { Avatar, AvatarFallback, AvatarImage } from '../../../components/ui/avatar'
-
-interface Module {
-  id: number
-  title: string
-  lessons: Lesson[]
-}
-
-interface Lesson {
-  id: number
-  title: string
-  duration: string
-  type: 'video' | 'article' | 'quiz'
-}
-
-interface CourseDetail {
-  id: number
-  title: string
-  description: string
-  instructor: string
-  instructorAvatar: string
-  rating: number
-  students: number
-  duration: string
-  level: string
-  price: number
-  category: string
-  modules: Module[]
-  whatYouLearn: string[]
-  requirements: string[]
-}
-
-const mockCourseDetail: CourseDetail = {
-  id: 1,
-  title: 'Complete React Developer',
-  description: 'Master React from fundamentals to advanced concepts. Build production-ready applications with modern React practices including hooks, context, Redux, and more.',
-  instructor: 'John Smith',
-  instructorAvatar: '',
-  rating: 4.8,
-  students: 12500,
-  duration: '40 hours',
-  level: 'Beginner',
-  price: 99,
-  category: 'Frontend',
-  modules: [
-    {
-      id: 1,
-      title: 'Getting Started with React',
-      lessons: [
-        { id: 1, title: 'Introduction to React', duration: '15 min', type: 'video' },
-        { id: 2, title: 'Setting Up Development Environment', duration: '20 min', type: 'video' },
-        { id: 3, title: 'Your First React Component', duration: '25 min', type: 'video' },
-      ]
-    },
-    {
-      id: 2,
-      title: 'React Fundamentals',
-      lessons: [
-        { id: 4, title: 'JSX and Components', duration: '30 min', type: 'video' },
-        { id: 5, title: 'Props and State', duration: '35 min', type: 'video' },
-        { id: 6, title: 'Event Handling', duration: '25 min', type: 'video' },
-        { id: 7, title: 'Quiz: React Fundamentals', duration: '15 min', type: 'quiz' },
-      ]
-    },
-    {
-      id: 3,
-      title: 'React Hooks',
-      lessons: [
-        { id: 8, title: 'Introduction to Hooks', duration: '20 min', type: 'video' },
-        { id: 9, title: 'useState and useEffect', duration: '40 min', type: 'video' },
-        { id: 10, title: 'Custom Hooks', duration: '30 min', type: 'video' },
-      ]
-    },
-    {
-      id: 4,
-      title: 'Advanced React',
-      lessons: [
-        { id: 11, title: 'Context API', duration: '35 min', type: 'video' },
-        { id: 12, title: 'React Router', duration: '40 min', type: 'video' },
-        { id: 13, title: 'State Management with Redux', duration: '45 min', type: 'video' },
-      ]
-    }
-  ],
-  whatYouLearn: [
-    'Build modern web applications with React',
-    'Understand React hooks and their use cases',
-    'Implement state management with Redux',
-    'Create reusable components',
-    'Deploy React applications to production',
-    'Write clean and maintainable React code'
-  ],
-  requirements: [
-    'Basic knowledge of HTML, CSS, and JavaScript',
-    'Understanding of ES6+ features',
-    'Familiarity with npm and command line'
-  ]
-}
+import { getCourse, type CourseDetail } from '../../../lib/api'
 
 export default function CourseDetailPage({ params }: { params: { id: string } }) {
   const [activeTab, setActiveTab] = useState('curriculum')
   const [isEnrolled, setIsEnrolled] = useState(false)
+  const [course, setCourse] = useState<CourseDetail | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  const handleEnroll = () => {
-    setIsEnrolled(true)
+  useEffect(() => {
+    getCourse(params.id)
+      .then(setCourse)
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setLoading(false))
+  }, [params.id])
+
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Loading course…</div>
   }
+  if (error || !course) {
+    return <div className="min-h-screen flex items-center justify-center text-red-500">Failed to load course: {error}</div>
+  }
+
+  const totalLessons = course.modules.reduce((acc, m) => acc + m.lessons.length, 0)
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
@@ -121,11 +40,9 @@ export default function CourseDetailPage({ params }: { params: { id: string } })
             <Link href="/" className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
               DevForge
             </Link>
-            <div className="flex gap-4">
-              <Link href="/courses" className="text-gray-600 dark:text-gray-300 hover:text-indigo-600">
-                Back to Courses
-              </Link>
-            </div>
+            <Link href="/courses" className="text-gray-600 dark:text-gray-300 hover:text-indigo-600">
+              Back to Courses
+            </Link>
           </div>
         </div>
       </div>
@@ -133,18 +50,14 @@ export default function CourseDetailPage({ params }: { params: { id: string } })
       <div className="max-w-7xl mx-auto px-6 py-8">
         {/* Course Header */}
         <div className="mb-8">
-          <Badge variant="secondary" className="mb-4">{mockCourseDetail.category}</Badge>
-          <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">
-            {mockCourseDetail.title}
-          </h1>
-          <p className="text-xl text-gray-600 dark:text-gray-300 mb-6">
-            {mockCourseDetail.description}
-          </p>
+          <Badge variant="secondary" className="mb-4">{course.category}</Badge>
+          <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">{course.title}</h1>
+          <p className="text-xl text-gray-600 dark:text-gray-300 mb-6">{course.description}</p>
           <div className="flex items-center gap-6 text-sm text-muted-foreground">
-            <span className="flex items-center">⭐ {mockCourseDetail.rating} rating</span>
-            <span>👥 {mockCourseDetail.students.toLocaleString()} students</span>
-            <span>⏱️ {mockCourseDetail.duration}</span>
-            <Badge variant="outline">{mockCourseDetail.level}</Badge>
+            <span className="flex items-center">⭐ {course.rating} rating</span>
+            <span>👥 {course.students.toLocaleString()} students</span>
+            <span>⏱️ {course.duration}</span>
+            <Badge variant="outline">{course.level}</Badge>
           </div>
         </div>
 
@@ -168,10 +81,9 @@ export default function CourseDetailPage({ params }: { params: { id: string } })
               ))}
             </div>
 
-            {/* Tab Content */}
             {activeTab === 'curriculum' && (
               <div className="space-y-4">
-                {mockCourseDetail.modules.map((module, moduleIndex) => (
+                {course.modules.map((module, moduleIndex) => (
                   <Card key={module.id}>
                     <CardHeader>
                       <CardTitle className="text-lg">
@@ -187,13 +99,9 @@ export default function CourseDetailPage({ params }: { params: { id: string } })
                             className="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-gray-800"
                           >
                             <div className="flex items-center gap-3">
-                              <span className="text-sm text-muted-foreground">
-                                {lessonIndex + 1}.
-                              </span>
+                              <span className="text-sm text-muted-foreground">{lessonIndex + 1}.</span>
                               <span className="font-medium">{lesson.title}</span>
-                              <Badge variant="outline" className="text-xs">
-                                {lesson.type}
-                              </Badge>
+                              <Badge variant="outline" className="text-xs">{lesson.type}</Badge>
                             </div>
                             <span className="text-sm text-muted-foreground">{lesson.duration}</span>
                           </div>
@@ -208,12 +116,10 @@ export default function CourseDetailPage({ params }: { params: { id: string } })
             {activeTab === 'overview' && (
               <div className="space-y-6">
                 <Card>
-                  <CardHeader>
-                    <CardTitle>What you'll learn</CardTitle>
-                  </CardHeader>
+                  <CardHeader><CardTitle>What you&apos;ll learn</CardTitle></CardHeader>
                   <CardContent>
                     <ul className="space-y-2">
-                      {mockCourseDetail.whatYouLearn.map((item, index) => (
+                      {course.whatYouLearn.map((item, index) => (
                         <li key={index} className="flex items-start gap-2">
                           <span className="text-green-500">✓</span>
                           <span>{item}</span>
@@ -222,14 +128,11 @@ export default function CourseDetailPage({ params }: { params: { id: string } })
                     </ul>
                   </CardContent>
                 </Card>
-
                 <Card>
-                  <CardHeader>
-                    <CardTitle>Requirements</CardTitle>
-                  </CardHeader>
+                  <CardHeader><CardTitle>Requirements</CardTitle></CardHeader>
                   <CardContent>
                     <ul className="space-y-2">
-                      {mockCourseDetail.requirements.map((req, index) => (
+                      {course.requirements.map((req, index) => (
                         <li key={index} className="flex items-start gap-2">
                           <span className="text-indigo-500">•</span>
                           <span>{req}</span>
@@ -246,16 +149,12 @@ export default function CourseDetailPage({ params }: { params: { id: string } })
                 <CardContent className="pt-6">
                   <div className="flex items-start gap-4">
                     <Avatar className="w-16 h-16">
-                      <AvatarImage src={mockCourseDetail.instructorAvatar} />
-                      <AvatarFallback>{mockCourseDetail.instructor.charAt(0)}</AvatarFallback>
+                      <AvatarImage src={course.instructorAvatar} />
+                      <AvatarFallback>{course.instructor.charAt(0)}</AvatarFallback>
                     </Avatar>
                     <div>
-                      <h3 className="text-xl font-semibold">{mockCourseDetail.instructor}</h3>
-                      <p className="text-muted-foreground">Senior React Developer</p>
-                      <p className="mt-2 text-sm">
-                        Expert React developer with 10+ years of experience building web applications.
-                        Passionate about teaching and helping developers level up their skills.
-                      </p>
+                      <h3 className="text-xl font-semibold">{course.instructor}</h3>
+                      <p className="text-muted-foreground">Senior Developer</p>
                     </div>
                   </div>
                 </CardContent>
@@ -267,31 +166,29 @@ export default function CourseDetailPage({ params }: { params: { id: string } })
           <div className="space-y-6">
             <Card className="sticky top-4">
               <CardHeader>
-                <CardTitle className="text-3xl">${mockCourseDetail.price}</CardTitle>
+                <CardTitle className="text-3xl">${course.price}</CardTitle>
                 <CardDescription>Lifetime access</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 {!isEnrolled ? (
-                  <Button onClick={handleEnroll} className="w-full" size="lg">
+                  <Button onClick={() => setIsEnrolled(true)} className="w-full" size="lg">
                     Enroll Now
                   </Button>
                 ) : (
-                  <Button className="w-full" size="lg" disabled>
-                    ✓ Enrolled
-                  </Button>
+                  <Button className="w-full" size="lg" disabled>✓ Enrolled</Button>
                 )}
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Duration</span>
-                    <span>{mockCourseDetail.duration}</span>
+                    <span>{course.duration}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Lessons</span>
-                    <span>{mockCourseDetail.modules.reduce((acc, m) => acc + m.lessons.length, 0)}</span>
+                    <span>{totalLessons}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Level</span>
-                    <span>{mockCourseDetail.level}</span>
+                    <span>{course.level}</span>
                   </div>
                 </div>
               </CardContent>

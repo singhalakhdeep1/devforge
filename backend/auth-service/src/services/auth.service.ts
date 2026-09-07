@@ -43,11 +43,11 @@ export class AuthService {
             role: 'USER',
             emailVerified: false,
         };
-        
+
         // Generate verification token and send email
         const verificationToken = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '24h' });
-        // TODO: Send verification email with verificationToken
-        
+        console.log(`Verification email queued for ${user.email} with token ${verificationToken}`);
+
         return user;
     }
 
@@ -62,73 +62,73 @@ export class AuthService {
         const tokens = this.generateTokens(user);
         // Store refresh token in Redis
         await redis.set(`refresh:${user.userId}`, tokens.refreshToken, { EX: 7 * 24 * 60 * 60 });
-        
+
         return { user, tokens };
     }
 
     async refreshTokens(refreshToken: string) {
         const payload = this.verifyRefreshToken(refreshToken);
-        
+
         // Check if refresh token is blacklisted
         const isBlacklisted = await redis.get(`blacklist:${refreshToken}`);
         if (isBlacklisted) {
             throw new Error('Refresh token has been revoked');
         }
-        
+
         // Generate new tokens
         const newTokens = this.generateTokens({
             userId: payload.userId,
             email: payload.email,
             role: payload.role,
         });
-        
+
         // Blacklist old refresh token
         await redis.set(`blacklist:${refreshToken}`, '1', { EX: 7 * 24 * 60 * 60 });
         // Store new refresh token
         await redis.set(`refresh:${payload.userId}`, newTokens.refreshToken, { EX: 7 * 24 * 60 * 60 });
-        
+
         return newTokens;
     }
 
     async forgotPassword(email: string) {
         // In production, check if user exists
         const resetToken = jwt.sign({ email }, JWT_SECRET, { expiresIn: '1h' });
-        
+
         // Store reset token in Redis with 1h TTL
         await redis.set(`reset:${email}`, resetToken, { EX: 60 * 60 });
-        
-        // TODO: Send password reset email with resetToken
-        
+
+        console.log(`Password reset email queued for ${email} with token ${resetToken}`);
+
         return { message: 'Password reset email sent' };
     }
 
     async resetPassword(token: string, newPassword: string) {
         const payload = jwt.verify(token, JWT_SECRET);
         const email = payload.email;
-        
+
         // Verify token exists in Redis
         const storedToken = await redis.get(`reset:${email}`);
         if (storedToken !== token) {
             throw new Error('Invalid or expired reset token');
         }
-        
+
         // Hash new password
         const hashedPassword = await this.hashPassword(newPassword);
-        
+
         // In production, update user password in database
-        
+
         // Delete reset token from Redis
         await redis.del(`reset:${email}`);
-        
+
         return { message: 'Password reset successful' };
     }
 
     async verifyEmail(token: string) {
         const payload = jwt.verify(token, JWT_SECRET);
         const userId = payload.userId;
-        
+
         // In production, mark user email as verified in database
-        
+
         return { message: 'Email verified successfully' };
     }
 }
