@@ -194,8 +194,9 @@ export const forgotPassword = async (req: Request, res: Response, next: NextFunc
         const { email } = req.body
 
         const user = await prisma.user.findUnique({ where: { email } })
+        // Respond identically whether or not the account exists to prevent user enumeration.
         if (!user) {
-            return res.status(404).json({ message: 'User not found' })
+            return res.json({ success: true, message: 'If that email exists, a reset link has been sent' })
         }
 
         // Generate reset token
@@ -219,7 +220,7 @@ export const forgotPassword = async (req: Request, res: Response, next: NextFunc
       `,
         })
 
-        res.json({ success: true, message: 'Password reset email sent' })
+        res.json({ success: true, message: 'If that email exists, a reset link has been sent' })
     } catch (error) {
         next(error)
     }

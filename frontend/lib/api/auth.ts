@@ -13,7 +13,6 @@ export interface RegisterData {
 
 export interface AuthResponse {
   accessToken: string
-  refreshToken: string
   user: {
     id: string
     name: string
@@ -22,28 +21,25 @@ export interface AuthResponse {
   }
 }
 
+// Backend wraps payloads as { success, data }.
 export const authAPI = {
   login: async (credentials: LoginCredentials): Promise<AuthResponse> => {
-    const response = await apiClient.post<AuthResponse>('/auth/login', credentials)
-    return response.data
+    const response = await apiClient.post<{ data: AuthResponse }>('/auth/login', credentials)
+    return response.data.data
   },
 
   register: async (data: RegisterData): Promise<AuthResponse> => {
-    const response = await apiClient.post<AuthResponse>('/auth/register', data)
-    return response.data
+    const response = await apiClient.post<{ data: AuthResponse }>('/auth/register', data)
+    return response.data.data
   },
 
   logout: async (): Promise<void> => {
     await apiClient.post('/auth/logout')
-    localStorage.removeItem('accessToken')
-    localStorage.removeItem('refreshToken')
   },
 
-  refreshToken: async (refreshToken: string): Promise<{ accessToken: string }> => {
-    const response = await apiClient.post<{ accessToken: string }>('/auth/refresh', {
-      refreshToken,
-    })
-    return response.data
+  refreshToken: async (): Promise<{ accessToken: string }> => {
+    const response = await apiClient.post<{ data: { accessToken: string } }>('/auth/refresh')
+    return response.data.data
   },
 
   getMe: async () => {
@@ -62,4 +58,9 @@ export const authAPI = {
   verifyEmail: async (token: string): Promise<void> => {
     await apiClient.get(`/auth/verify/${token}`)
   },
+}
+
+export function apiErrorMessage(error: unknown, fallback: string): string {
+  const message = (error as { response?: { data?: { message?: string } } })?.response?.data?.message
+  return message || fallback
 }

@@ -1,135 +1,90 @@
 import { Request, Response } from 'express';
+import { prisma } from '../lib/prisma';
 
-type Answer = {
-  id: number;
-  userId: string;
-  content: string;
-  createdAt: Date;
-  upvotes: number;
+const toId = (value: string) => {
+  const id = Number(value);
+  return Number.isInteger(id) ? id : null;
 };
-
-type Discussion = {
-  id: number;
-  courseId: string;
-  userId: string;
-  title: string;
-  content: string;
-  createdAt: Date;
-  answers: Answer[];
-};
-
-const discussionStore: Discussion[] = [
-  {
-    id: 1,
-    courseId: '1',
-    userId: 'system-user',
-    title: 'How should I structure a React project?',
-    content: 'Looking for a clean structure for a growing front-end app.',
-    createdAt: new Date(),
-    answers: [
-      { id: 101, userId: 'user-2', content: 'Keep feature folders and shared UI separate.', upvotes: 7, createdAt: new Date() },
-    ],
-  },
-];
 
 export const createDiscussion = async (req: Request, res: Response) => {
   try {
     const { courseId, title, content } = req.body ?? {};
-    const userId = req.user?.id ?? 'anonymous-user';
-
-    if (!title || !content || !courseId) {
+    const parsedCourseId = Number(courseId);
+    if (!title || !content || !Number.isInteger(parsedCourseId)) {
       return res.status(400).json({ error: 'courseId, title, and content are required' });
     }
-
-    const discussion = {
-      id: Date.now(),
-      courseId: String(courseId),
-      userId,
-      title: String(title),
-      content: String(content),
-      createdAt: new Date(),
-      answers: [],
-    } satisfies Discussion;
-
-    discussionStore.unshift(discussion);
+    const discussion = await prisma.discussion.create({
+      data: { courseId: parsedCourseId, userId: req.user.id, title: String(title), content: String(content) },
+      include: { answers: true },
+    });
     return res.status(201).json(discussion);
-  } catch (error) {
+  } catch {
     return res.status(500).json({ error: 'Failed to create discussion' });
   }
 };
 
 export const getDiscussionsByCourse = async (req: Request, res: Response) => {
   try {
-    const { courseId } = req.params;
-    const items = discussionStore.filter((discussion) => discussion.courseId === courseId);
+    const courseId = toId(req.params.courseId);
+    if (courseId === null) return res.status(400).json({ error: 'Invalid course id' });
+    const items = await prisma.discussion.findMany({
+      where: { courseId },
+      include: { answers: { orderBy: { upvotes: 'desc' } } },
+      orderBy: { createdAt: 'desc' },
+    });
     return res.json(items);
-  } catch (error) {
+  } catch {
     return res.status(500).json({ error: 'Failed to fetch discussions' });
   }
 };
 
 export const getDiscussionById = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
-    const discussion = discussionStore.find((item) => item.id === Number(id));
-
-    if (!discussion) {
-      return res.status(404).json({ error: 'Discussion not found' });
-    }
-
+    const id = toId(req.params.id);
+    if (id === null) return res.status(400).json({ error: 'Invalid discussion id' });
+    const discussion = await prisma.discussion.findUnique({
+      where: { id },
+      include: { answers: { orderBy: { upvotes: 'desc' } } },
+    });
+    if (!discussion) return res.status(404).json({ error: 'Discussion not found' });
     return res.json(discussion);
-  } catch (error) {
+  } catch {
     return res.status(500).json({ error: 'Failed to fetch discussion' });
   }
 };
 
 export const addAnswer = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
-    const { content } = req.body ?? {};
-    const userId = req.user?.id ?? 'anonymous-user';
+    const id = toId(req.params.id);
+    if (id === null) return res.status(400).json({ error: 'Invalid discussion id' });
+    const content = String(req.body?.content ?? '').trim();
+    if (!content) return res.status(400).json({ error: 'Answer content is required' });
 
-    const discussion = discussionStore.find((item) => item.id === Number(id));
-    if (!discussion) {
-      return res.status(404).json({ error: 'Discussion not found' });
-    }
+    const discussion = await prisma.discussion.findUnique({ where: { id }, select: { id: true } });
+    if (!discussion) return res.status(404).json({ error: 'Discussion not found' });
 
-    if (!content || !String(content).trim()) {
-      return res.status(400).json({ error: 'Answer content is required' });
-    }
-
-    const answer: Answer = {
-      id: Date.now(),
-      userId,
-      content: String(content),
-      createdAt: new Date(),
-      upvotes: 0,
-    };
-
-    discussion.answers.push(answer);
+    const answer = await prisma.answer.create({ data: { discussionId: id, userId: req.user.id, content } });
     return res.status(201).json(answer);
-  } catch (error) {
+  } catch {
     return res.status(500).json({ error: 'Failed to add answer' });
   }
 };
 
 export const upvoteAnswer = async (req: Request, res: Response) => {
   try {
-    const { discussionId, answerId } = req.params;
-    const discussion = discussionStore.find((item) => item.id === Number(discussionId));
+    const discussionId = toId(req.params.discussionId);
+    const answerId = toId(req.params.answerId);
+    if (discussionId === null || answerId === null) return res.status(400).json({ error: 'Invalid id' });
 
-    if (!discussion) {
-      return res.status(404).json({ error: 'Discussion not found' });
-    }
+    const result = await prisma.answer.updateMany({
+      where: { id: answerId, discussionId },
+      data: { upvotes: { increment: 1 } },
+    });
+    if (result.count === 0) return res.status(404).json({ error: 'Answer not found' });
 
-    const answer = discussion.answers.find((item) => item.id === Number(answerId));
-    if (!answer) {
-      return res.status(404).json({ error: 'Answer not found' });
-    }
-
-    answer.upvotes += 1;
+    const answer = await prisma.answer.findUnique({ where: { id: answerId } });
     return res.json({ message: 'Upvoted successfully', answer });
-  } catch (error) {
+  } catch {
     return res.status(500).json({ error: 'Failed to upvote answer' });
   }
 };

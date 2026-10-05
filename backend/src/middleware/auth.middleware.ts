@@ -1,5 +1,8 @@
 import { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
+import { PrismaClient } from '@prisma/client'
+
+const prisma = new PrismaClient()
 
 interface JwtPayload {
     userId: string
@@ -41,9 +44,21 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
 }
 
 export const authorize = (...roles: string[]) => {
-    return (req: Request, res: Response, next: NextFunction) => {
-        // This would check user role from database
-        // For now, just pass through
-        next()
+    return async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            if (!req.user) {
+                return res.status(401).json({ message: 'Not authorized' })
+            }
+            const user = await prisma.user.findUnique({
+                where: { id: req.user.id },
+                select: { role: true },
+            })
+            if (!user || !roles.includes(user.role)) {
+                return res.status(403).json({ message: 'Forbidden: insufficient permissions' })
+            }
+            next()
+        } catch (error) {
+            next(error)
+        }
     }
 }

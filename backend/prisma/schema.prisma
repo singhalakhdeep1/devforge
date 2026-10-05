@@ -27,3 +27,115 @@ model Deployment {
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
+
+model User {
+  id                String    @id @default(uuid())
+  email             String    @unique
+  password          String?
+  name              String
+  avatar            String?
+  role              String    @default("STUDENT")
+  bio               String?
+  skills            String[]
+  githubUrl         String?
+  linkedinUrl       String?
+  portfolioUrl      String?
+  isVerified        Boolean   @default(false)
+  verificationToken String?
+  resetToken        String?
+  resetTokenExpiry  DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  enrollments       Enrollment[]
+}
+
+model Course {
+  id          Int          @id @default(autoincrement())
+  title       String
+  description String
+  instructor  String
+  rating      Float        @default(0)
+  students    Int          @default(0)
+  duration    String
+  level       String       @default("Beginner")
+  price       Float        @default(0)
+  category    String       @default("General")
+  modules     Json         @default("[]")
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  enrollments Enrollment[]
+}
+
+model Enrollment {
+  id               Int      @id @default(autoincrement())
+  userId           String
+  courseId         Int
+  progress         Int      @default(0)
+  completedLessons Int      @default(0)
+  enrolledAt       DateTime @default(now())
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course           Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId])
+}
+
+
+model Discussion {
+  id        Int      @id @default(autoincrement())
+  courseId  Int
+  userId    String
+  title     String
+  content   String
+  createdAt DateTime @default(now())
+  answers   Answer[]
+
+  @@index([courseId])
+}
+
+model Answer {
+  id           Int        @id @default(autoincrement())
+  discussionId Int
+  userId       String
+  content      String
+  upvotes      Int        @default(0)
+  createdAt    DateTime   @default(now())
+  discussion   Discussion @relation(fields: [discussionId], references: [id], onDelete: Cascade)
+
+  @@index([discussionId])
+}
+
+model Snippet {
+  id          Int      @id @default(autoincrement())
+  userId      String
+  title       String
+  code        String
+  language    String
+  description String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model QuizQuestion {
+  id            Int      @id @default(autoincrement())
+  lessonId      String
+  position      Int      @default(0)
+  question      String
+  options       String[]
+  correctAnswer Int
+
+  @@index([lessonId])
+}
+
+model QuizResult {
+  id             Int      @id @default(autoincrement())
+  userId         String
+  lessonId       String
+  score          Int
+  totalQuestions Int
+  correctAnswers Int
+  submittedAt    DateTime @default(now())
+
+  @@index([userId])
+}

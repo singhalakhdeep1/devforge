@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { useAuthStore } from '../store/authStore'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'
 
@@ -7,12 +8,12 @@ const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true,
 })
 
-// Request interceptor to add auth token
 apiClient.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('accessToken')
+    const token = useAuthStore.getState().accessToken
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -21,28 +22,25 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 )
 
-// Response interceptor to handle token refresh
+// The refresh token lives in an httpOnly cookie; the backend returns { data: { accessToken } }.
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config
+    const isAuthCall = typeof originalRequest?.url === 'string' && originalRequest.url.startsWith('/auth/')
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (error.response?.status === 401 && !originalRequest._retry && !isAuthCall) {
       originalRequest._retry = true
       try {
-        const refreshToken = localStorage.getItem('refreshToken')
-        const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
-          refreshToken,
-        })
-        const { accessToken } = response.data
-        localStorage.setItem('accessToken', accessToken)
+        const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {}, { withCredentials: true })
+        const accessToken: string = response.data.data.accessToken
+        const { user, setAuth } = useAuthStore.getState()
+        if (user) setAuth(user, accessToken)
         originalRequest.headers.Authorization = `Bearer ${accessToken}`
         return apiClient(originalRequest)
       } catch (refreshError) {
-        // Refresh failed, redirect to login
-        localStorage.removeItem('accessToken')
-        localStorage.removeItem('refreshToken')
-        window.location.href = '/login'
+        useAuthStore.getState().logout()
+        if (typeof window !== 'undefined') window.location.href = '/login'
         return Promise.reject(refreshError)
       }
     }

@@ -2,13 +2,13 @@ import jwt from 'jsonwebtoken'
 
 export const generateToken = (userId: string): string => {
     return jwt.sign({ userId }, process.env.JWT_SECRET!, {
-        expiresIn: process.env.JWT_EXPIRY || '15m',
+        expiresIn: (process.env.JWT_EXPIRY || '15m') as jwt.SignOptions['expiresIn'],
     })
 }
 
 export const generateRefreshToken = (userId: string): string => {
     return jwt.sign({ userId }, process.env.JWT_REFRESH_SECRET!, {
-        expiresIn: process.env.JWT_REFRESH_EXPIRY || '7d',
+        expiresIn: (process.env.JWT_REFRESH_EXPIRY || '7d') as jwt.SignOptions['expiresIn'],
     })
 }
 
@@ -19,3 +19,4 @@ export const verifyToken = (token: string): any => {
 export const verifyRefreshToken = (token: string): any => {
     return jwt.verify(token, process.env.JWT_REFRESH_SECRET!)
 }
+

@@ -87,7 +87,7 @@ export const updateProfile = async (req: Request, res: Response) => {
 export const uploadAvatar = async (req: Request, res: Response) => {
   try {
     const userId = req.user?.id ?? 'demo-user';
-    const file = req.file;
+    const file = (req as Request & { file?: { filename?: string; path?: string; originalname?: string } }).file;
 
     if (!file) {
       return res.status(400).json({ error: 'An avatar file is required' });
@@ -133,3 +133,5 @@ export const deleteAccount = async (req: Request, res: Response) => {
     return res.status(500).json({ error: 'Failed to delete account' });
   }
 };
+
+

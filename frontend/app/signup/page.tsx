@@ -2,6 +2,9 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { authAPI, apiErrorMessage } from '../../lib/api/auth'
+import { useAuthStore } from '../../lib/store/authStore'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import { Label } from '../../components/ui/label'
@@ -13,6 +16,9 @@ export default function SignupPage() {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState('')
+  const router = useRouter()
+  const setAuth = useAuthStore((s) => s.setAuth)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -23,12 +29,16 @@ export default function SignupPage() {
     }
     
     setIsLoading(true)
-    
-    // Simulate API call
-    setTimeout(() => {
-      console.log('Signup attempt:', { name, email, password })
+    setError('')
+    try {
+      const { user, accessToken } = await authAPI.register({ name, email, password })
+      setAuth(user, accessToken)
+      router.push('/dashboard')
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Signup failed'))
+    } finally {
       setIsLoading(false)
-    }, 1000)
+    }
   }
 
   return (
@@ -88,6 +98,7 @@ export default function SignupPage() {
             </div>
           </CardContent>
           <CardFooter className="flex flex-col space-y-4">
+            {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? 'Creating account...' : 'Create account'}
             </Button>

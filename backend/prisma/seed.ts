@@ -21,6 +21,55 @@ async function main() {
   });
 
   console.log(`Seeded project: ${project.name}`);
+
+  if ((await prisma.course.count()) === 0) {
+    await prisma.course.createMany({
+      data: [
+        {
+          title: 'Complete React Developer',
+          description: 'Learn React from scratch and build production-ready applications',
+          instructor: 'John Smith',
+          rating: 4.8,
+          duration: '40 hours',
+          level: 'Beginner',
+          price: 99,
+          category: 'Frontend',
+          modules: [
+            { id: 1, title: 'React fundamentals', duration: '2h' },
+            { id: 2, title: 'Hooks and state', duration: '3h' },
+            { id: 3, title: 'Routing and data fetching', duration: '4h' },
+            { id: 4, title: 'Deployment patterns', duration: '2h' },
+          ],
+        },
+        {
+          title: 'Node.js API Mastery',
+          description: 'Design production APIs with Express, security, testing, and deployment practices.',
+          instructor: 'Alicia Reed',
+          rating: 4.9,
+          duration: '35 hours',
+          level: 'Intermediate',
+          price: 129,
+          category: 'Backend',
+          modules: [
+            { id: 1, title: 'REST design', duration: '2h' },
+            { id: 2, title: 'Authentication', duration: '3h' },
+            { id: 3, title: 'Queues and jobs', duration: '4h' },
+          ],
+        },
+      ],
+    });
+    console.log('Seeded sample courses');
+  }
+
+  if ((await prisma.quizQuestion.count()) === 0) {
+    await prisma.quizQuestion.createMany({
+      data: [
+        { lessonId: '1', position: 1, question: 'What is the main responsibility of React?', options: ['Data persistence', 'Rendering UI', 'Database management', 'Packaging code'], correctAnswer: 1 },
+        { lessonId: '1', position: 2, question: 'Which hook is used for side effects?', options: ['useMemo', 'useEffect', 'useCallback', 'useContext'], correctAnswer: 1 },
+      ],
+    });
+    console.log('Seeded sample quiz');
+  }
 }
 
 main()
