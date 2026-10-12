@@ -17,7 +17,8 @@
     "backend/search-service",
     "backend/email-service",
     "backend/analytics-service",
-    "backend/project-service"
+    "backend/project-service",
+    "backend/kanban-service"
   ],
   "scripts": {
     "build:shared": "npm run build -w @devhub/shared",

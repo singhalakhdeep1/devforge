@@ -1,120 +1,26 @@
+// Kanban boards: columns with WIP limits, tasks with fractional ordering, sprints, epics, labels,
+// comments, attachments, time tracking and an activity log. Lives in its own Postgres schema ("kanban").
+// Who may do what is decided by the owning project (project-service); this service stores no roles.
+
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  output        = "../src/generated/client"
+  binaryTargets = ["native", "debian-openssl-3.0.x", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
-// Board model
-model Board {
-  id          String   @id @default(uuid())
-  name        String
-  description String?
-  slug        String   @unique
-  projectId   String
-  workspaceId String
-  isTemplate  Boolean  @default(false)
-  visibility  BoardVisibility @default(PRIVATE)
-  settings    Json     @default("{}")
-  createdBy   String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  columns     Column[]
-  tasks       Task[]
-  sprints     Sprint[]
-  labels      Label[]
-  members     BoardMember[]
-  activities  Activity[]
-  
-  @@index([projectId])
-  @@index([workspaceId])
-  @@index([createdBy])
+  url      = env("KANBAN_DATABASE_URL")
 }
 
 enum BoardVisibility {
   PRIVATE
-  TEAM
   PUBLIC
 }
 
-// Column model (Status)
-model Column {
-  id          String   @id @default(uuid())
-  boardId     String
-  name        String
-  description String?
-  color       String   @default("#808080")
-  order       Int
-  isDefault   Boolean  @default(false)
-  limit       Int?     // WIP limit
-  settings    Json     @default("{}")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  board       Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  tasks       Task[]
-  
-  @@index([boardId])
-  @@unique([boardId, order])
-}
-
-// Task model
-model Task {
-  id              String      @id @default(uuid())
-  boardId         String
-  columnId        String
-  sprintId        String?
-  title           String
-  description     String?
-  key             String      @unique // e.g., PROJ-123
-  type            TaskType    @default(TASK)
-  priority        Priority    @default(MEDIUM)
-  status          TaskStatus  @default(TODO)
-  points          Int?        // Story points
-  estimatedHours  Float?
-  actualHours     Float?
-  order           Int
-  dueDate         DateTime?
-  startDate       DateTime?
-  completedAt     DateTime?
-  assigneeId      String?
-  reporterId      String
-  parentId        String?     // For subtasks
-  epicId          String?
-  tags            String[]    @default([])
-  customFields    Json        @default("{}")
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-
-  board           Board       @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  column          Column      @relation(fields: [columnId], references: [id])
-  sprint          Sprint?     @relation(fields: [sprintId], references: [id])
-  parent          Task?       @relation("TaskSubtasks", fields: [parentId], references: [id])
-  subtasks        Task[]      @relation("TaskSubtasks")
-  epic            Epic?       @relation(fields: [epicId], references: [id])
-  comments        Comment[]
-  attachments     Attachment[]
-  activities      Activity[]
-  timeEntries     TimeEntry[]
-  taskLabels      TaskLabel[]
-  watchers        TaskWatcher[]
-  
-  @@index([boardId])
-  @@index([columnId])
-  @@index([sprintId])
-  @@index([assigneeId])
-  @@index([reporterId])
-  @@index([parentId])
-  @@index([epicId])
-}
-
 enum TaskType {
-  EPIC
-  STORY
   TASK
+  STORY
   BUG
   SUBTASK
 }
@@ -131,146 +37,200 @@ enum TaskStatus {
   TODO
   IN_PROGRESS
   IN_REVIEW
-  TESTING
   DONE
   BLOCKED
-}
-
-// Sprint model
-model Sprint {
-  id          String       @id @default(uuid())
-  boardId     String
-  name        String
-  goal        String?
-  startDate   DateTime
-  endDate     DateTime
-  status      SprintStatus @default(PLANNED)
-  velocity    Int?
-  completedPoints Int?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-
-  board       Board        @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  tasks       Task[]
-  
-  @@index([boardId])
-  @@index([status])
 }
 
 enum SprintStatus {
   PLANNED
   ACTIVE
   COMPLETED
-  CLOSED
 }
 
-// Epic model
+model UserRef {
+  id        String   @id
+  name      String
+  avatar    String?
+  updatedAt DateTime @updatedAt
+}
+
+model Board {
+  id          String          @id @default(uuid())
+  projectId   String
+  name        String
+  description String?
+  /// short prefix for task keys, e.g. "WEB" gives WEB-1, WEB-2
+  keyPrefix   String
+  /// last task number handed out; incremented atomically so keys never collide
+  lastNumber  Int             @default(0)
+  visibility  BoardVisibility @default(PRIVATE)
+  createdBy   String
+  archived    Boolean         @default(false)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  columns  Column[]
+  tasks    Task[]
+  sprints  Sprint[]
+  epics    Epic[]
+  labels   Label[]
+  activity Activity[]
+
+  @@index([projectId])
+}
+
+model Column {
+  id        String     @id @default(uuid())
+  boardId   String
+  name      String
+  color     String     @default("#6b7280")
+  /// moving a task into this column sets the task to this status
+  status    TaskStatus @default(TODO)
+  order     Float
+  /// work-in-progress limit; null means unlimited
+  wipLimit  Int?
+  createdAt DateTime   @default(now())
+
+  board Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  tasks Task[]
+
+  @@index([boardId, order])
+}
+
+model Task {
+  id             String     @id @default(uuid())
+  boardId        String
+  columnId       String
+  sprintId       String?
+  epicId         String?
+  parentId       String?
+  number         Int
+  key            String
+  title          String
+  description    String?
+  type           TaskType   @default(TASK)
+  priority       Priority   @default(MEDIUM)
+  status         TaskStatus @default(TODO)
+  points         Int?
+  estimatedHours Float?
+  /// fractional position inside the column: moving a card only rewrites that one card
+  order          Float
+  dueDate        DateTime?
+  completedAt    DateTime?
+  assigneeId     String?
+  reporterId     String
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  board       Board         @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  column      Column        @relation(fields: [columnId], references: [id])
+  sprint      Sprint?       @relation(fields: [sprintId], references: [id], onDelete: SetNull)
+  epic        Epic?         @relation(fields: [epicId], references: [id], onDelete: SetNull)
+  parent      Task?         @relation("Subtasks", fields: [parentId], references: [id], onDelete: Cascade)
+  subtasks    Task[]        @relation("Subtasks")
+  labels      TaskLabel[]
+  comments    Comment[]
+  attachments Attachment[]
+  timeEntries TimeEntry[]
+  watchers    TaskWatcher[]
+
+  @@unique([boardId, number])
+  @@index([boardId, columnId, order])
+  @@index([assigneeId])
+  @@index([sprintId])
+  @@index([epicId])
+  @@index([parentId])
+}
+
+model Sprint {
+  id              String       @id @default(uuid())
+  boardId         String
+  name            String
+  goal            String?
+  startDate       DateTime
+  endDate         DateTime
+  status          SprintStatus @default(PLANNED)
+  committedPoints Int?
+  completedPoints Int?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime     @default(now())
+
+  board Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  tasks Task[]
+
+  @@index([boardId, status])
+}
+
 model Epic {
   id          String   @id @default(uuid())
   boardId     String
   name        String
   description String?
-  color       String   @default("#6B46C1")
-  startDate   DateTime?
-  endDate     DateTime?
-  progress    Int      @default(0)
+  color       String   @default("#7c3aed")
   createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
 
-  tasks       Task[]
-  
+  board Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  tasks Task[]
+
   @@index([boardId])
 }
 
-// Label model
 model Label {
-  id          String   @id @default(uuid())
-  boardId     String
-  name        String
-  color       String
-  description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(uuid())
+  boardId   String
+  name      String
+  color     String
+  createdAt DateTime @default(now())
 
-  board       Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  taskLabels  TaskLabel[]
-  
-  @@index([boardId])
+  board Board       @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  tasks TaskLabel[]
+
   @@unique([boardId, name])
 }
 
-// Task-Label junction
 model TaskLabel {
-  id        String   @id @default(uuid())
-  taskId    String
-  labelId   String
-  createdAt DateTime @default(now())
+  taskId  String
+  labelId String
 
-  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  label     Label    @relation(fields: [labelId], references: [id], onDelete: Cascade)
-  
-  @@unique([taskId, labelId])
-  @@index([taskId])
+  task  Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  label Label @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, labelId])
   @@index([labelId])
 }
 
-// Board Member model
-model BoardMember {
-  id        String      @id @default(uuid())
-  boardId   String
-  userId    String
-  role      BoardRole   @default(MEMBER)
-  joinedAt  DateTime    @default(now())
-
-  board     Board       @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  
-  @@unique([boardId, userId])
-  @@index([boardId])
-  @@index([userId])
-}
-
-enum BoardRole {
-  OWNER
-  ADMIN
-  MEMBER
-  VIEWER
-}
-
-// Comment model
 model Comment {
-  id          String   @id @default(uuid())
-  taskId      String
-  userId      String
-  content     String
-  mentions    String[] @default([])
-  isEdited    Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(uuid())
+  taskId    String
+  userId    String
+  content   String
+  mentions  String[]
+  edited    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  
-  @@index([taskId])
-  @@index([userId])
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
 }
 
-// Attachment model
+/// An attachment: the bytes live in the file-service.
 model Attachment {
-  id          String   @id @default(uuid())
-  taskId      String
-  userId      String
-  filename    String
-  fileUrl     String
-  fileSize    Int
-  mimeType    String
-  createdAt   DateTime @default(now())
+  id        String   @id @default(uuid())
+  taskId    String
+  fileId    String
+  name      String
+  mimeType  String
+  size      Int
+  addedBy   String
+  createdAt DateTime @default(now())
 
-  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  
-  @@index([taskId])
-  @@index([userId])
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, fileId])
 }
 
-// Time Entry model
 model TimeEntry {
   id          String   @id @default(uuid())
   taskId      String
@@ -280,75 +240,34 @@ model TimeEntry {
   date        DateTime
   createdAt   DateTime @default(now())
 
-  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
   @@index([taskId])
-  @@index([userId])
-  @@index([date])
+  @@index([userId, date])
 }
 
-// Activity/History model
-model Activity {
-  id          String       @id @default(uuid())
-  boardId     String?
-  taskId      String?
-  userId      String
-  action      ActivityType
-  field       String?
-  oldValue    String?
-  newValue    String?
-  metadata    Json         @default("{}")
-  createdAt   DateTime     @default(now())
-
-  board       Board?       @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  task        Task?        @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  
-  @@index([boardId])
-  @@index([taskId])
-  @@index([userId])
-  @@index([createdAt])
-}
-
-enum ActivityType {
-  TASK_CREATED
-  TASK_UPDATED
-  TASK_MOVED
-  TASK_DELETED
-  COMMENT_ADDED
-  ATTACHMENT_ADDED
-  STATUS_CHANGED
-  ASSIGNEE_CHANGED
-  PRIORITY_CHANGED
-  SPRINT_STARTED
-  SPRINT_COMPLETED
-  BOARD_CREATED
-  MEMBER_ADDED
-}
-
-// Task Watcher model
 model TaskWatcher {
+  taskId String
+  userId String
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, userId])
+  @@index([userId])
+}
+
+model Activity {
   id        String   @id @default(uuid())
-  taskId    String
+  boardId   String
+  taskId    String?
   userId    String
+  action    String
+  /// what changed, e.g. { field: "assignee", from: "...", to: "..." }
+  detail    Json     @default("{}")
   createdAt DateTime @default(now())
 
-  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  
-  @@unique([taskId, userId])
-  @@index([taskId])
-  @@index([userId])
-}
+  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
 
-// Workflow model (for custom workflows)
-model Workflow {
-  id          String   @id @default(uuid())
-  boardId     String
-  name        String
-  description String?
-  isDefault   Boolean  @default(false)
-  config      Json     @default("{}")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  @@index([boardId])
+  @@index([boardId, createdAt])
+  @@index([taskId, createdAt])
 }

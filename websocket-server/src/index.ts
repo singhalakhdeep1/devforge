@@ -4,6 +4,7 @@ import {
     REALTIME_CHANNEL,
     createLogger,
     createRedis,
+    createServiceClient,
     env,
     getRedis,
     redisHealthy,
@@ -159,6 +160,12 @@ function registerEditorHandlers(io: Server, socket: Socket, user: { id: string; 
  */
 type Checker = (user: { id: string; role: string }, resourceId: string) => Promise<boolean>
 export const roomCheckers: Record<string, Checker> = {}
+
+// Boards and projects: the owning service decides who may listen in (and says no if it cannot answer)
+const kanban = createServiceClient('kanban')
+const projects = createServiceClient('project')
+roomCheckers.board = async (user, id) => (await kanban.get<{ canRead: boolean }>(`/internal/boards/${id}/access/${user.id}`)).canRead
+roomCheckers.project = async (user, id) => (await projects.get<{ canRead: boolean }>(`/internal/projects/${id}/access/${user.id}`)).canRead
 
 function registerGenericRooms(io: Server, socket: Socket, user: { id: string; name: string; role: string }) {
     socket.on('join_room', async (roomId: unknown, ack?: (r: { ok: boolean }) => void) => {

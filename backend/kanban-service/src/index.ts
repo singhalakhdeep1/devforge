@@ -1,89 +1,65 @@
-import './tracing';
-import express from 'express';
-import { createServer } from 'http';
-import { Server } from 'socket.io';
-import cors from 'cors';
-import helmet from 'helmet';
-import dotenv from 'dotenv';
-import kanbanRoutes from './routes/kanban.routes';
-import kanbanService from './services/kanban.service';
+import { Router } from 'express'
+import { AppError, TOPICS, asyncHandler, createEventBus, createLogger, internalOnly, redisHealthy, startService } from '@devhub/shared'
+import boards from './boards'
+import { prisma } from './db'
+import { boardAccess, bus } from './lib'
+import tasks from './tasks'
 
-dotenv.config();
+const log = createLogger('kanban')
+const GROUP = 'kanban-service'
 
-const app = express();
-const httpServer = createServer(app);
-const io = new Server(httpServer, {
-    cors: {
-        origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
-        credentials: true
-    }
-});
+async function startConsumers() {
+  const upsert = async ({ data }: { data: { id: string; name: string; avatar?: string | null } }) => {
+    await prisma.userRef.upsert({ where: { id: data.id }, update: { name: data.name, avatar: data.avatar ?? null }, create: { id: data.id, name: data.name, avatar: data.avatar ?? null } })
+  }
+  await bus.subscribe(TOPICS.userRegistered, GROUP, upsert)
+  await bus.subscribe(TOPICS.userUpdated, GROUP, upsert)
 
-// Middleware
-app.use(helmet());
-app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:3000', credentials: true }));
-app.use(express.json());
+  // A deleted account: its cards become unassigned and its personal records go; shared work stays
+  await bus.subscribe(TOPICS.userDeleted, GROUP, async ({ data }) => {
+    const id: string = data.id
+    await Promise.all([
+      prisma.task.updateMany({ where: { assigneeId: id }, data: { assigneeId: null } }),
+      prisma.taskWatcher.deleteMany({ where: { userId: id } }),
+      prisma.timeEntry.deleteMany({ where: { userId: id } }),
+      prisma.userRef.deleteMany({ where: { id } }),
+    ])
+  })
 
-// Routes
-app.use('/api/kanban', kanbanRoutes);
+  // A deleted project takes its boards with it
+  await bus.subscribe(TOPICS.projectChanged, GROUP, async ({ data }) => {
+    if (data.action === 'deleted') await prisma.board.deleteMany({ where: { projectId: data.id } })
+  })
+  log.logInformation('kanban consumers started')
+}
 
-// Health check
-app.get('/health', (req, res) => {
-    res.json({ status: 'OK', service: 'kanban-service' });
-});
+/** For the websocket-server: may this user subscribe to a board's live updates? */
+const internal = Router()
+internal.use(internalOnly)
+internal.get('/boards/:id/access/:userId', asyncHandler(async (req, res) => {
+  if (!/^[0-9a-f-]{36}$/i.test(req.params.id)) throw AppError.notFound('Board not found')
+  const board = await prisma.board.findUnique({ where: { id: req.params.id } })
+  if (!board) throw AppError.notFound('Board not found')
+  const a = await boardAccess(board, req.params.userId === 'anonymous' ? undefined : req.params.userId)
+  res.json({ canRead: a.read, canWrite: a.write, canAdmin: a.admin })
+}))
 
-// Socket.IO connection
-io.on('connection', (socket) => {
-    console.log('Client connected:', socket.id);
-
-    // Join board room
-    socket.on('join:board', (boardId: string) => {
-        socket.join(`board:${boardId}`);
-        console.log(`Socket ${socket.id} joined board:${boardId}`);
-    });
-
-    // Leave board room
-    socket.on('leave:board', (boardId: string) => {
-        socket.leave(`board:${boardId}`);
-        console.log(`Socket ${socket.id} left board:${boardId}`);
-    });
-
-    // Task drag start
-    socket.on('task:drag-start', (data: { boardId: string; taskId: string; userId: string }) => {
-        socket.to(`board:${data.boardId}`).emit('task:dragging', {
-            taskId: data.taskId,
-            userId: data.userId
-        });
-    });
-
-    // Task drag end
-    socket.on('task:drag-end', (data: { boardId: string; taskId: string }) => {
-        socket.to(`board:${data.boardId}`).emit('task:drag-stopped', {
-            taskId: data.taskId
-        });
-    });
-
-    // User typing in comment
-    socket.on('comment:typing', (data: { boardId: string; taskId: string; userId: string; isTyping: boolean }) => {
-        socket.to(`board:${data.boardId}`).emit('comment:typing-status', {
-            taskId: data.taskId,
-            userId: data.userId,
-            isTyping: data.isTyping
-        });
-    });
-
-    socket.on('disconnect', () => {
-        console.log('Client disconnected:', socket.id);
-    });
-});
-
-// Set socket server in kanban service
-kanbanService.setSocketServer(io);
-
-const PORT = process.env.PORT || 3011;
-
-httpServer.listen(PORT, () => {
-    console.log(`Kanban Service running on port ${PORT}`);
-});
-
-export { io };
+void startService({
+  name: 'kanban',
+  trustProxy: true,
+  cors: false,
+  routes: (app) => {
+    app.use('/api/boards', boards)
+    app.use('/api/tasks', tasks)
+    app.use('/internal', internal)
+  },
+  ready: { postgres: () => prisma.$queryRaw`SELECT 1`, redis: () => redisHealthy() },
+  onStart: () => startConsumers(),
+  onStop: async () => {
+    await createEventBus('kanban').close()
+    await prisma.$disconnect()
+  },
+}).catch((e) => {
+  console.error('kanban-service failed to start', e)
+  process.exit(1)
+})
