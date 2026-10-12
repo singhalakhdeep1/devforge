@@ -11,7 +11,8 @@
     "backend/notification-service",
     "websocket-server",
     "backend/payment-service",
-    "backend/editor-service"
+    "backend/editor-service",
+    "backend/file-service"
   ],
   "scripts": {
     "build:shared": "npm run build -w @devhub/shared",

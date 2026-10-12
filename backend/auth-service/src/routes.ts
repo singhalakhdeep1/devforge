@@ -469,6 +469,15 @@ internalRouter.get('/users/:id', asyncHandler(async (req, res) => {
   res.json(brief(u));
 }));
 
+/** Called by the file-service after it stored a new avatar; returns the old one so it can be deleted. */
+internalRouter.patch('/users/:id/avatar', validate(z.object({ avatar: z.string().max(500).nullable() })), asyncHandler(async (req, res) => {
+  const existing = await prisma.user.findUnique({ where: { id: req.params.id }, select: { avatar: true } });
+  if (!existing) throw AppError.notFound('User not found');
+  const user = await prisma.user.update({ where: { id: req.params.id }, data: { avatar: req.body.avatar } });
+  emit(bus, TOPICS.userUpdated, 'user.updated', { id: user.id, name: user.name, avatar: user.avatar, role: user.role }, user.id);
+  res.json({ avatar: user.avatar, previous: existing.avatar });
+}));
+
 internalRouter.get('/users/by-email/:email', asyncHandler(async (req, res) => {
   const u = await prisma.user.findUnique({ where: { email: req.params.email.toLowerCase() } });
   if (!u) throw AppError.notFound('User not found');

@@ -1,48 +1,25 @@
-import express, { Application } from 'express';
-import helmet from 'helmet';
-import cors from 'cors';
-import compression from 'compression';
-import dotenv from 'dotenv';
-import { logger } from './config/logger';
-import { errorHandler } from './middleware/errorHandler';
-import fileRoutes from './routes/file.routes';
+import { TOPICS, createEventBus, redisHealthy, startService } from '@devhub/shared'
+import { prisma } from './db'
+import router, { publicRouter, purgeUser } from './routes'
+import { storage } from './storage'
 
-dotenv.config();
-
-const app: Application = express();
-const PORT = process.env.FILE_SERVICE_PORT || 4003;
-
-// Middleware
-app.use(helmet());
-app.use(cors());
-app.use(compression());
-app.use(express.json());
-
-// Routes
-app.use('/api/v1/files', fileRoutes);
-
-app.get('/health', (req, res) => {
-    res.json({
-        status: 'healthy',
-        service: 'file-service',
-        uptime: process.uptime(),
-    });
-});
-
-// Error handler
-app.use(errorHandler);
-
-const server = app.listen(PORT, () => {
-    logger.info(`📁 File Service running on port ${PORT}`);
-});
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-    logger.info('SIGTERM received, shutting down gracefully');
-    server.close(() => {
-        logger.info('Server closed');
-        process.exit(0);
-    });
-});
-
-export default app;
+void startService({
+  name: 'file',
+  trustProxy: true,
+  cors: false,
+  routes: (app) => {
+    app.use('/uploads', publicRouter)
+    app.use('/api/files', router)
+  },
+  ready: { postgres: () => prisma.$queryRaw`SELECT 1`, redis: () => redisHealthy(), storage: async () => storage().kind },
+  onStart: async () => {
+    await createEventBus('file').subscribe(TOPICS.userDeleted, 'file-service', async ({ data }) => purgeUser(data.id))
+  },
+  onStop: async () => {
+    await createEventBus('file').close()
+    await prisma.$disconnect()
+  },
+}).catch((e) => {
+  console.error('file-service failed to start', e)
+  process.exit(1)
+})
