@@ -1,0 +1,744 @@
+type Query {
+  # User queries
+  me: User
+  user(id: ID!): User
+  users(filter: UserFilter, limit: Int, offset: Int): UserConnection!
+  
+  # Board queries
+  board(id: ID!): Board
+  boards(workspaceId: ID!, filter: BoardFilter): [Board!]!
+  
+  # Task queries
+  task(id: ID!): Task
+  tasks(boardId: ID!, filter: TaskFilter): [Task!]!
+  myTasks(filter: TaskFilter): [Task!]!
+  
+  # Sprint queries
+  sprint(id: ID!): Sprint
+  sprints(boardId: ID!): [Sprint!]!
+  
+  # Analytics
+  boardAnalytics(boardId: ID!): BoardAnalytics!
+  userWorkload(userId: ID!, startDate: DateTime!, endDate: DateTime!): UserWorkload!
+  teamVelocity(boardId: ID!, sprints: Int): TeamVelocity!
+  
+  # Search
+  searchTasks(query: String!, boardId: ID, limit: Int): [Task!]!
+  searchBoards(query: String!, workspaceId: ID!): [Board!]!
+  
+  # Notifications
+  notifications(limit: Int, offset: Int): NotificationConnection!
+  unreadNotificationsCount: Int!
+}
+
+type Mutation {
+  # User mutations
+  updateProfile(input: UpdateProfileInput!): User!
+  updateSettings(input: UpdateSettingsInput!): User!
+  
+  # Board mutations
+  createBoard(input: CreateBoardInput!): Board!
+  updateBoard(id: ID!, input: UpdateBoardInput!): Board!
+  deleteBoard(id: ID!): Boolean!
+  addBoardMember(boardId: ID!, userId: ID!, role: BoardRole!): BoardMember!
+  removeBoardMember(boardId: ID!, userId: ID!): Boolean!
+  
+  # Column mutations
+  createColumn(input: CreateColumnInput!): Column!
+  updateColumn(id: ID!, input: UpdateColumnInput!): Column!
+  deleteColumn(id: ID!): Boolean!
+  reorderColumns(boardId: ID!, columnOrders: [ColumnOrderInput!]!): [Column!]!
+  
+  # Task mutations
+  createTask(input: CreateTaskInput!): Task!
+  updateTask(id: ID!, input: UpdateTaskInput!): Task!
+  deleteTask(id: ID!): Boolean!
+  moveTask(id: ID!, columnId: ID!, order: Int!): Task!
+  assignTask(id: ID!, userId: ID!): Task!
+  unassignTask(id: ID!): Task!
+  addTaskLabel(taskId: ID!, labelId: ID!): Task!
+  removeTaskLabel(taskId: ID!, labelId: ID!): Task!
+  addTaskToSprint(taskId: ID!, sprintId: ID!): Task!
+  removeTaskFromSprint(taskId: ID!): Task!
+  watchTask(taskId: ID!): Task!
+  unwatchTask(taskId: ID!): Task!
+  
+  # Sprint mutations
+  createSprint(input: CreateSprintInput!): Sprint!
+  updateSprint(id: ID!, input: UpdateSprintInput!): Sprint!
+  deleteSprint(id: ID!): Boolean!
+  startSprint(id: ID!): Sprint!
+  completeSprint(id: ID!): Sprint!
+  
+  # Label mutations
+  createLabel(input: CreateLabelInput!): Label!
+  updateLabel(id: ID!, input: UpdateLabelInput!): Label!
+  deleteLabel(id: ID!): Boolean!
+  
+  # Comment mutations
+  addComment(input: AddCommentInput!): Comment!
+  updateComment(id: ID!, content: String!): Comment!
+  deleteComment(id: ID!): Boolean!
+  
+  # Attachment mutations
+  addAttachment(input: AddAttachmentInput!): Attachment!
+  deleteAttachment(id: ID!): Boolean!
+  
+  # Time tracking
+  logTime(input: LogTimeInput!): TimeEntry!
+  deleteTimeEntry(id: ID!): Boolean!
+  
+  # Notifications
+  markNotificationRead(id: ID!): Notification!
+  markAllNotificationsRead: Boolean!
+  deleteNotification(id: ID!): Boolean!
+}
+
+type Subscription {
+  # Board subscriptions
+  boardUpdated(boardId: ID!): BoardUpdate!
+  
+  # Task subscriptions
+  taskCreated(boardId: ID!): Task!
+  taskUpdated(taskId: ID!): Task!
+  taskMoved(boardId: ID!): Task!
+  taskDeleted(boardId: ID!): TaskDeleted!
+  
+  # Comment subscriptions
+  commentAdded(taskId: ID!): Comment!
+  
+  # User subscriptions
+  userTyping(taskId: ID!): UserTyping!
+  
+  # Notification subscriptions
+  notificationReceived: Notification!
+}
+
+# ==================== TYPES ====================
+
+type User {
+  id: ID!
+  email: String!
+  name: String!
+  avatar: String
+  bio: String
+  role: UserRole!
+  settings: UserSettings!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  
+  # Computed fields
+  boards: [Board!]!
+  assignedTasks: [Task!]!
+  workload: Int!
+}
+
+enum UserRole {
+  USER
+  ADMIN
+  SUPER_ADMIN
+}
+
+type UserSettings {
+  theme: String!
+  language: String!
+  notifications: NotificationSettings!
+  timezone: String!
+}
+
+type NotificationSettings {
+  email: Boolean!
+  push: Boolean!
+  taskAssigned: Boolean!
+  taskCompleted: Boolean!
+  commentAdded: Boolean!
+  mentionedInComment: Boolean!
+}
+
+type Board {
+  id: ID!
+  name: String!
+  description: String
+  slug: String!
+  projectId: ID!
+  workspaceId: ID!
+  visibility: BoardVisibility!
+  settings: JSON!
+  createdBy: ID!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  
+  # Relations
+  columns: [Column!]!
+  tasks: [Task!]!
+  sprints: [Sprint!]!
+  labels: [Label!]!
+  members: [BoardMember!]!
+  activities: [Activity!]!
+  
+  # Computed
+  activeSprint: Sprint
+  tasksCount: Int!
+  completedTasksCount: Int!
+  analytics: BoardAnalytics!
+}
+
+enum BoardVisibility {
+  PRIVATE
+  TEAM
+  PUBLIC
+}
+
+type Column {
+  id: ID!
+  boardId: ID!
+  name: String!
+  description: String
+  color: String!
+  order: Int!
+  isDefault: Boolean!
+  limit: Int
+  settings: JSON!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  
+  board: Board!
+  tasks: [Task!]!
+  tasksCount: Int!
+}
+
+type Task {
+  id: ID!
+  boardId: ID!
+  columnId: ID!
+  sprintId: ID
+  title: String!
+  description: String
+  key: String!
+  type: TaskType!
+  priority: Priority!
+  status: TaskStatus!
+  points: Int
+  estimatedHours: Float
+  actualHours: Float
+  order: Int!
+  dueDate: DateTime
+  startDate: DateTime
+  completedAt: DateTime
+  assigneeId: ID
+  reporterId: ID!
+  parentId: ID
+  epicId: ID
+  tags: [String!]!
+  customFields: JSON!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  
+  # Relations
+  board: Board!
+  column: Column!
+  sprint: Sprint
+  parent: Task
+  subtasks: [Task!]!
+  epic: Epic
+  comments: [Comment!]!
+  attachments: [Attachment!]!
+  activities: [Activity!]!
+  timeEntries: [TimeEntry!]!
+  labels: [Label!]!
+  watchers: [User!]!
+  assignee: User
+  reporter: User!
+  
+  # Computed
+  commentsCount: Int!
+  attachmentsCount: Int!
+  subtasksCount: Int!
+  completedSubtasksCount: Int!
+  progress: Float!
+  isOverdue: Boolean!
+  timeSpent: Float!
+}
+
+enum TaskType {
+  EPIC
+  STORY
+  TASK
+  BUG
+  SUBTASK
+}
+
+enum Priority {
+  LOWEST
+  LOW
+  MEDIUM
+  HIGH
+  HIGHEST
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  TESTING
+  DONE
+  BLOCKED
+}
+
+type Sprint {
+  id: ID!
+  boardId: ID!
+  name: String!
+  goal: String
+  startDate: DateTime!
+  endDate: DateTime!
+  status: SprintStatus!
+  velocity: Int
+  completedPoints: Int
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  
+  board: Board!
+  tasks: [Task!]!
+  
+  # Computed
+  tasksCount: Int!
+  completedTasksCount: Int!
+  totalPoints: Int!
+  completedPointsPercentage: Float!
+  daysRemaining: Int!
+  burndown: [BurndownPoint!]!
+}
+
+enum SprintStatus {
+  PLANNED
+  ACTIVE
+  COMPLETED
+  CLOSED
+}
+
+type BurndownPoint {
+  date: DateTime!
+  remainingPoints: Int!
+  idealRemainingPoints: Int!
+}
+
+type Epic {
+  id: ID!
+  boardId: ID!
+  name: String!
+  description: String
+  color: String!
+  startDate: DateTime
+  endDate: DateTime
+  progress: Int!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  
+  tasks: [Task!]!
+  tasksCount: Int!
+  completedTasksCount: Int!
+}
+
+type Label {
+  id: ID!
+  boardId: ID!
+  name: String!
+  color: String!
+  description: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  
+  board: Board!
+  tasks: [Task!]!
+  tasksCount: Int!
+}
+
+type BoardMember {
+  id: ID!
+  boardId: ID!
+  userId: ID!
+  role: BoardRole!
+  joinedAt: DateTime!
+  
+  board: Board!
+  user: User!
+}
+
+enum BoardRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+type Comment {
+  id: ID!
+  taskId: ID!
+  userId: ID!
+  content: String!
+  mentions: [ID!]!
+  isEdited: Boolean!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  
+  task: Task!
+  user: User!
+  mentionedUsers: [User!]!
+}
+
+type Attachment {
+  id: ID!
+  taskId: ID!
+  userId: ID!
+  filename: String!
+  fileUrl: String!
+  fileSize: Int!
+  mimeType: String!
+  createdAt: DateTime!
+  
+  task: Task!
+  user: User!
+}
+
+type TimeEntry {
+  id: ID!
+  taskId: ID!
+  userId: ID!
+  hours: Float!
+  description: String
+  date: DateTime!
+  createdAt: DateTime!
+  
+  task: Task!
+  user: User!
+}
+
+type Activity {
+  id: ID!
+  boardId: ID
+  taskId: ID
+  userId: ID!
+  action: ActivityType!
+  field: String
+  oldValue: String
+  newValue: String
+  metadata: JSON!
+  createdAt: DateTime!
+  
+  board: Board
+  task: Task
+  user: User!
+}
+
+enum ActivityType {
+  TASK_CREATED
+  TASK_UPDATED
+  TASK_MOVED
+  TASK_DELETED
+  COMMENT_ADDED
+  ATTACHMENT_ADDED
+  STATUS_CHANGED
+  ASSIGNEE_CHANGED
+  PRIORITY_CHANGED
+  SPRINT_STARTED
+  SPRINT_COMPLETED
+  BOARD_CREATED
+  MEMBER_ADDED
+}
+
+type Notification {
+  id: ID!
+  userId: ID!
+  type: NotificationType!
+  title: String!
+  message: String!
+  data: JSON!
+  read: Boolean!
+  createdAt: DateTime!
+  
+  user: User!
+}
+
+enum NotificationType {
+  TASK_ASSIGNED
+  TASK_COMPLETED
+  TASK_COMMENT
+  MENTION
+  SPRINT_STARTED
+  SPRINT_COMPLETED
+  BOARD_INVITATION
+}
+
+# ==================== ANALYTICS ====================
+
+type BoardAnalytics {
+  totalTasks: Int!
+  completedTasks: Int!
+  tasksInProgress: Int!
+  completionRate: Float!
+  tasksByColumn: [ColumnStats!]!
+  tasksByPriority: [PriorityStats!]!
+  tasksByType: [TypeStats!]!
+  tasksByAssignee: [AssigneeStats!]!
+}
+
+type ColumnStats {
+  columnId: ID!
+  columnName: String!
+  count: Int!
+}
+
+type PriorityStats {
+  priority: Priority!
+  count: Int!
+}
+
+type TypeStats {
+  type: TaskType!
+  count: Int!
+}
+
+type AssigneeStats {
+  userId: ID!
+  userName: String!
+  count: Int!
+}
+
+type UserWorkload {
+  userId: ID!
+  totalTasks: Int!
+  completedTasks: Int!
+  inProgressTasks: Int!
+  totalHours: Float!
+  tasksByPriority: [PriorityStats!]!
+}
+
+type TeamVelocity {
+  sprints: [SprintVelocity!]!
+  avgVelocity: Float!
+}
+
+type SprintVelocity {
+  sprintId: ID!
+  sprintName: String!
+  completedPoints: Int!
+  velocity: Int!
+  startDate: DateTime!
+  endDate: DateTime!
+}
+
+# ==================== CONNECTIONS ====================
+
+type UserConnection {
+  edges: [UserEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type UserEdge {
+  node: User!
+  cursor: String!
+}
+
+type NotificationConnection {
+  edges: [NotificationEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type NotificationEdge {
+  node: Notification!
+  cursor: String!
+}
+
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}
+
+# ==================== INPUT TYPES ====================
+
+input UserFilter {
+  role: UserRole
+  search: String
+}
+
+input BoardFilter {
+  visibility: BoardVisibility
+  search: String
+}
+
+input TaskFilter {
+  columnId: ID
+  sprintId: ID
+  assigneeId: ID
+  type: TaskType
+  priority: Priority
+  status: TaskStatus
+  search: String
+  dueDate: DateRange
+}
+
+input DateRange {
+  from: DateTime
+  to: DateTime
+}
+
+input UpdateProfileInput {
+  name: String
+  avatar: String
+  bio: String
+}
+
+input UpdateSettingsInput {
+  theme: String
+  language: String
+  notifications: NotificationSettingsInput
+  timezone: String
+}
+
+input NotificationSettingsInput {
+  email: Boolean
+  push: Boolean
+  taskAssigned: Boolean
+  taskCompleted: Boolean
+  commentAdded: Boolean
+  mentionedInComment: Boolean
+}
+
+input CreateBoardInput {
+  name: String!
+  description: String
+  projectId: ID!
+  workspaceId: ID!
+  visibility: BoardVisibility
+}
+
+input UpdateBoardInput {
+  name: String
+  description: String
+  visibility: BoardVisibility
+}
+
+input CreateColumnInput {
+  boardId: ID!
+  name: String!
+  color: String
+  limit: Int
+}
+
+input UpdateColumnInput {
+  name: String
+  color: String
+  limit: Int
+}
+
+input ColumnOrderInput {
+  id: ID!
+  order: Int!
+}
+
+input CreateTaskInput {
+  boardId: ID!
+  columnId: ID!
+  title: String!
+  description: String
+  type: TaskType
+  priority: Priority
+  assigneeId: ID
+  sprintId: ID
+  points: Int
+  estimatedHours: Float
+  dueDate: DateTime
+  parentId: ID
+  epicId: ID
+  tags: [String!]
+}
+
+input UpdateTaskInput {
+  title: String
+  description: String
+  type: TaskType
+  priority: Priority
+  points: Int
+  estimatedHours: Float
+  dueDate: DateTime
+  tags: [String!]
+  customFields: JSON
+}
+
+input CreateSprintInput {
+  boardId: ID!
+  name: String!
+  goal: String
+  startDate: DateTime!
+  endDate: DateTime!
+}
+
+input UpdateSprintInput {
+  name: String
+  goal: String
+  startDate: DateTime
+  endDate: DateTime
+}
+
+input CreateLabelInput {
+  boardId: ID!
+  name: String!
+  color: String!
+  description: String
+}
+
+input UpdateLabelInput {
+  name: String
+  color: String
+  description: String
+}
+
+input AddCommentInput {
+  taskId: ID!
+  content: String!
+  mentions: [ID!]
+}
+
+input AddAttachmentInput {
+  taskId: ID!
+  filename: String!
+  fileUrl: String!
+  fileSize: Int!
+  mimeType: String!
+}
+
+input LogTimeInput {
+  taskId: ID!
+  hours: Float!
+  description: String
+  date: DateTime!
+}
+
+# ==================== SUBSCRIPTION PAYLOADS ====================
+
+type BoardUpdate {
+  type: String!
+  data: JSON!
+}
+
+type TaskDeleted {
+  id: ID!
+  boardId: ID!
+}
+
+type UserTyping {
+  userId: ID!
+  taskId: ID!
+  isTyping: Boolean!
+}
+
+# ==================== CUSTOM SCALARS ====================
+
+scalar DateTime
+scalar JSON
+scalar Upload

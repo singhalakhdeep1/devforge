@@ -1,14 +1,19 @@
 {
   "name": "devforge",
-  "version": "1.0.0",
-  "description": "Developer learning platform: courses, quizzes, certificates, live code editor",
+  "version": "2.0.0",
+  "description": "DevForge: developer platform. Courses and learning, projects, kanban boards, collaborative editor, video rooms, payments. Microservices behind an API gateway.",
   "private": true,
+  "workspaces": [
+    "backend/shared",
+    "backend/auth-service",
+    "backend/course-service",
+    "backend/api-gateway"
+  ],
   "scripts": {
-    "install:all": "npm --prefix backend install && npm --prefix frontend install",
-    "dev:backend": "npm --prefix backend run dev",
+    "build:shared": "npm run build -w @devhub/shared",
+    "build": "npm run build:shared && npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
     "dev:frontend": "npm --prefix frontend run dev",
-    "build": "npm --prefix backend run build && npm --prefix frontend run build",
-    "typecheck": "npm --prefix backend run typecheck && npm --prefix frontend run typecheck",
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down"
   },

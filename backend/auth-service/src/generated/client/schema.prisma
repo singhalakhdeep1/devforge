@@ -1,0 +1,109 @@
+// Auth service data: users, sessions (refresh tokens), OAuth links, email-link tokens.
+// Lives in its own Postgres schema ("auth"): no other service reads these tables.
+
+generator client {
+  provider      = "prisma-client-js"
+  output        = "../src/generated/client"
+  binaryTargets = ["native", "debian-openssl-3.0.x", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("AUTH_DATABASE_URL")
+}
+
+enum Role {
+  STUDENT
+  INSTRUCTOR
+  MODERATOR
+  ADMIN
+}
+
+enum EmailPurpose {
+  VERIFY
+  RESET
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  /// null for accounts created through OAuth only
+  passwordHash String?
+  name         String
+  avatar       String?
+  role         Role     @default(STUDENT)
+  bio          String?
+  location     String?
+  skills       String[]
+  githubUrl    String?
+  linkedinUrl  String?
+  portfolioUrl String?
+
+  isVerified  Boolean   @default(false)
+  isActive    Boolean   @default(true)
+  lastLoginAt DateTime?
+
+  twoFactorEnabled     Boolean  @default(false)
+  /// AES-256-GCM encrypted TOTP secret ("iv:tag:ciphertext", hex)
+  twoFactorSecret      String?
+  /// bcrypt hashes of unused one-time backup codes
+  twoFactorBackupCodes String[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  refreshTokens RefreshToken[]
+  oauthAccounts OAuthAccount[]
+  emailTokens   EmailToken[]
+
+  @@index([role])
+}
+
+model RefreshToken {
+  id           String    @id @default(uuid())
+  /// sha256 of the opaque token; the token itself is never stored
+  tokenHash    String    @unique
+  /// all tokens descending from one login share a family so theft can revoke the whole chain
+  familyId     String
+  userId       String
+  userAgent    String?
+  ip           String?
+  createdAt    DateTime  @default(now())
+  lastUsedAt   DateTime  @default(now())
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  replacedById String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+}
+
+model OAuthAccount {
+  id         String   @id @default(uuid())
+  provider   String
+  providerId String
+  email      String?
+  userId     String
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerId])
+  @@index([userId])
+}
+
+model EmailToken {
+  id        String       @id @default(uuid())
+  userId    String
+  purpose   EmailPurpose
+  tokenHash String       @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime     @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose])
+}

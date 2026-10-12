@@ -1,5 +1,5 @@
 {
-  "name": "devforge-backend",
+  "name": "@devhub/course-service",
   "version": "1.0.0",
   "description": "DevForge API: courses, learning progress, quizzes, discussions, code editor, payments",
   "main": "dist/server.js",

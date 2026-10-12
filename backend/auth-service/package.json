@@ -1,0 +1,35 @@
+{
+  "name": "@devhub/auth-service",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Authentication: accounts, sessions with rotating refresh tokens, 2FA (TOTP), OAuth, roles",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "generate": "prisma generate",
+    "build": "prisma generate && tsc && node ../../scripts/copy-generated.mjs",
+    "start": "node dist/index.js",
+    "typecheck": "prisma generate && tsc --noEmit",
+    "migrate": "prisma migrate deploy"
+  },
+  "dependencies": {
+    "@devhub/shared": "*",
+    "@prisma/client": "^5.22.0",
+    "axios": "^1.7.9",
+    "bcryptjs": "^2.4.3",
+    "express": "^4.21.2",
+    "qrcode": "^1.5.4",
+    "speakeasy": "^2.0.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.17.14",
+    "@types/qrcode": "^1.5.5",
+    "@types/speakeasy": "^2.0.10",
+    "prisma": "^5.22.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}

@@ -53,3 +53,14 @@ temp/
 .next-env.d.ts
 # Uploaded files
 backend/uploads/
+
+# generated / local
+node_modules/
+dist/
+.next/
+*.log
+.env
+.env.local
+src/generated/
+backend/uploads/*
+!backend/uploads/.gitkeep
