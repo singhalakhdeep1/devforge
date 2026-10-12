@@ -150,7 +150,7 @@ export const fileUploadSize = new promClient.Histogram({
  */
 export function metricsMiddleware(serviceName: string) {
     return responseTime((req: Request, res: Response, time: number) => {
-        const route = req.route ? `${req.baseUrl || ''}${req.route.path}` : 'unmatched';
+        const route = req.route ? `${req.baseUrl || ''}${req.route.path}` : (res.locals?.metricRoute as string | undefined) ?? 'unmatched';
         const method = req.method;
         const statusCode = res.statusCode;
 

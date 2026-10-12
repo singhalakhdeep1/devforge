@@ -22,6 +22,17 @@ export class CircuitBreaker {
     return this.state;
   }
 
+  /** Manual mode for callers that cannot wrap the call (e.g. a streaming proxy). */
+  allow(): boolean { return this.status !== 'open'; }
+  success(): void { this.failures = 0; this.state = 'closed'; }
+  failure(): void {
+    this.failures++;
+    if (this.state === 'half-open' || this.failures >= this.failureThreshold) {
+      this.state = 'open';
+      this.openedAt = Date.now();
+    }
+  }
+
   async exec<T>(fn: () => Promise<T>): Promise<T> {
     if (this.status === 'open') throw AppError.unavailable(`${this.name} is temporarily unavailable`);
     try {

@@ -27,11 +27,16 @@ export const verifyAccessToken = (token: string): AuthUser => {
 /** Shared secret between the gateway and services. Requests carrying it are trusted to carry x-user-* headers. */
 export const internalKey = (): string => process.env.INTERNAL_API_KEY || 'dev-only-internal-key';
 
+const decodeName = (v: unknown): string | undefined => {
+  if (typeof v !== 'string' || !v) return undefined;
+  try { return decodeURIComponent(v); } catch { return v; }
+};
+
 export const userFromHeaders = (req: Request): AuthUser | undefined => {
   if (req.headers['x-internal-key'] !== internalKey()) return undefined;
   const id = req.headers['x-user-id'];
   if (!id) return undefined;
-  return { id: String(id), role: String(req.headers['x-user-role'] ?? 'USER'), email: req.headers['x-user-email'] as string | undefined, name: req.headers['x-user-name'] as string | undefined };
+  return { id: String(id), role: String(req.headers['x-user-role'] ?? 'USER'), email: req.headers['x-user-email'] as string | undefined, name: decodeName(req.headers['x-user-name']) };
 };
 
 /** Identify the caller if possible but do not require it. */

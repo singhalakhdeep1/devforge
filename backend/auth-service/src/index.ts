@@ -8,6 +8,20 @@ void startService({
   cors: false, // only reachable through the gateway, which owns CORS
   routes: (app) => {
     app.use('/api/auth', router);
+    // Paths the web client has always used for profile management
+    const compat: Record<string, [string, string]> = {
+      'GET /profile': ['GET', '/me'],
+      'PUT /profile': ['PATCH', '/me'],
+      'POST /change-password': ['POST', '/change-password'],
+      'DELETE /account': ['DELETE', '/me'],
+    };
+    app.use('/api/users', (req, res, next) => {
+      const target = compat[`${req.method} ${req.path}`];
+      if (!target) return next();
+      req.method = target[0];
+      req.url = target[1];
+      router(req, res, next);
+    });
     app.use('/internal', internalRouter);
   },
   ready: {
