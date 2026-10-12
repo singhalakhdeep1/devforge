@@ -1,61 +1,77 @@
+'use client'
+
 import Link from 'next/link'
+import { useQuery } from '@tanstack/react-query'
+import { Award, Code2, MessageSquare, Users } from 'lucide-react'
+import { courseApi } from '../lib/api'
+import { useAuthStore } from '../lib/store/authStore'
+import { CourseCard } from '../components/course-card'
+import { Button, ButtonLink } from '../components/ui/button'
 
-export default function Home() {
+const features = [
+  { icon: Code2, title: 'Learn by doing', text: 'Short lessons, runnable examples and an in-browser code editor with live pair-programming.' },
+  { icon: Award, title: 'Prove your skills', text: 'Pass the quizzes, finish the course and get a certificate anyone can verify with its code.' },
+  { icon: MessageSquare, title: 'Never stuck', text: 'Ask questions on any lesson. Get answers from instructors and other learners.' },
+  { icon: Users, title: 'Teach your own', text: 'Build and publish courses with a studio that tracks students, completion and earnings.' },
+]
+
+export default function HomePage() {
+  const user = useAuthStore((s) => s.user)
+  const popular = useQuery({ queryKey: ['courses', 'popular-home'], queryFn: () => courseApi.list({ sort: 'popular', pageSize: 4 }) })
+  const categories = useQuery({ queryKey: ['categories'], queryFn: courseApi.categories })
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
-      {/* Navigation */}
-      <nav className="px-6 py-4 bg-white dark:bg-gray-800 shadow-sm">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">DevForge</div>
-          <div className="flex gap-6">
-            <Link href="/login" className="text-gray-600 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400">
-              Login
-            </Link>
-            <Link href="/signup" className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
-              Sign Up
-            </Link>
-          </div>
-        </div>
-      </nav>
-
-      {/* Hero Section */}
-      <div className="max-w-7xl mx-auto px-6 py-20">
-        <div className="text-center">
-          <h1 className="text-5xl font-bold text-gray-900 dark:text-white mb-6">
-            Build Your Developer Career
-          </h1>
-          <p className="text-xl text-gray-600 dark:text-gray-300 mb-8 max-w-2xl mx-auto">
-            The comprehensive platform for developers to learn, collaborate, and grow your skills with real-world projects
+    <div>
+      <section className="bg-gradient-to-br from-slate-900 via-indigo-950 to-blue-900 text-white">
+        <div className="mx-auto max-w-4xl px-4 py-24 text-center">
+          <h1 className="text-4xl font-bold tracking-tight md:text-6xl">Learn to build software, one project at a time</h1>
+          <p className="mx-auto mt-6 max-w-2xl text-lg text-slate-200">
+            Practical developer courses with quizzes, certificates, a live code editor and a community that answers your questions.
           </p>
-          <div className="flex gap-4 justify-center">
-            <Link href="/courses" className="px-8 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-lg">
-              Browse Courses
-            </Link>
-            <Link href="/dashboard" className="px-8 py-3 border-2 border-indigo-600 text-indigo-600 dark:text-indigo-400 rounded-lg hover:bg-indigo-50 dark:hover:bg-gray-800 text-lg">
-              Go to Dashboard
-            </Link>
+          <div className="mt-8 flex flex-wrap justify-center gap-3">
+            <ButtonLink href="/courses" size="lg" className="bg-white text-slate-900 hover:bg-white/90">Browse courses</ButtonLink>
+            {!user && <ButtonLink href="/signup" size="lg" variant="outline" className="border-white/40 bg-transparent text-white hover:bg-white/10 hover:text-white">Create a free account</ButtonLink>}
+            {user && <ButtonLink href="/dashboard" size="lg" variant="outline" className="border-white/40 bg-transparent text-white hover:bg-white/10 hover:text-white">Go to my learning</ButtonLink>}
           </div>
         </div>
+      </section>
 
-        {/* Features */}
-        <div className="grid md:grid-cols-3 gap-8 mt-20">
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm">
-            <div className="text-4xl mb-4">📚</div>
-            <h3 className="text-xl font-semibold mb-2 text-gray-900 dark:text-white">Learn</h3>
-            <p className="text-gray-600 dark:text-gray-300">Access hundreds of courses covering modern technologies and best practices</p>
-          </div>
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm">
-            <div className="text-4xl mb-4">🤝</div>
-            <h3 className="text-xl font-semibold mb-2 text-gray-900 dark:text-white">Collaborate</h3>
-            <p className="text-gray-600 dark:text-gray-300">Work with other developers on real projects and build your portfolio</p>
-          </div>
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm">
-            <div className="text-4xl mb-4">🚀</div>
-            <h3 className="text-xl font-semibold mb-2 text-gray-900 dark:text-white">Grow</h3>
-            <p className="text-gray-600 dark:text-gray-300">Track your progress, earn certificates, and advance your career</p>
-          </div>
+      <section className="mx-auto max-w-7xl px-4 py-16">
+        <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+          {features.map(({ icon: Icon, title, text }) => (
+            <div key={title}>
+              <Icon className="h-8 w-8 text-blue-600" />
+              <h3 className="mt-3 font-semibold">{title}</h3>
+              <p className="mt-1 text-sm text-muted-foreground">{text}</p>
+            </div>
+          ))}
         </div>
-      </div>
+      </section>
+
+      {!!popular.data?.data.length && (
+        <section className="mx-auto max-w-7xl px-4 pb-16">
+          <div className="mb-6 flex items-end justify-between">
+            <h2 className="text-2xl font-bold">Popular courses</h2>
+            <Link href="/courses" className="text-sm text-blue-600 hover:underline">See all</Link>
+          </div>
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {popular.data.data.map((c) => <CourseCard key={c.id} course={c} />)}
+          </div>
+        </section>
+      )}
+
+      {!!categories.data?.length && (
+        <section className="mx-auto max-w-7xl px-4 pb-20">
+          <h2 className="mb-4 text-2xl font-bold">Browse by topic</h2>
+          <div className="flex flex-wrap gap-3">
+            {categories.data.map((c) => (
+              <Link key={c.name} href={`/courses?category=${encodeURIComponent(c.name)}`} className="rounded-full border px-4 py-2 text-sm hover:bg-accent">
+                {c.name} <span className="text-muted-foreground">({c.count})</span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   )
 }

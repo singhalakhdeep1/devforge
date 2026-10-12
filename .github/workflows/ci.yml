@@ -1,382 +1,45 @@
-name: CI Pipeline
+name: CI
 
 on:
   push:
-    branches: [main, develop, staging]
+    branches: [main]
   pull_request:
-    branches: [main, develop]
-
-env:
-  NODE_VERSION: '20'
 
 jobs:
-  lint:
-    name: Lint & Format Check
+  backend:
     runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-      
-      - name: Install dependencies
-        run: npm ci
-      
-      - name: Run ESLint
-        run: npm run lint
-      
-      - name: Check code formatting
-        run: npm run format:check
-
-  test-backend:
-    name: Backend Tests
-    runs-on: ubuntu-latest
-    
-    services:
-      postgres:
-        image: postgres:15-alpine
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: test_password
-          POSTGRES_DB: devhub_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      
-      mongodb:
-        image: mongo:7
-        env:
-          MONGO_INITDB_ROOT_USERNAME: root
-          MONGO_INITDB_ROOT_PASSWORD: test_password
-        ports:
-          - 27017:27017
-        options: >-
-          --health-cmd "mongosh --eval 'db.runCommand({ ping: 1 })'"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    strategy:
-      matrix:
-        service: 
-          - api-gateway
-          - auth-service
-          - email-service
-          - notification-service
-          - file-service
-          - analytics-service
-          - search-service
-          - payment-service
-          - kanban-service
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: backend/${{ matrix.service }}/package-lock.json
-      
-      - name: Install dependencies
-        working-directory: backend/${{ matrix.service }}
-        run: npm ci
-      
-      - name: Generate Prisma Client
-        if: hashFiles('backend/${{ matrix.service }}/prisma/schema.prisma') != ''
-        working-directory: backend/${{ matrix.service }}
-        run: npx prisma generate
-      
-      - name: Run database migrations
-        if: hashFiles('backend/${{ matrix.service }}/prisma/schema.prisma') != ''
-        working-directory: backend/${{ matrix.service }}
-        run: npx prisma migrate deploy
-        env:
-          DATABASE_URL: postgresql://postgres:test_password@localhost:5432/devhub_test
-      
-      - name: Run unit tests
-        working-directory: backend/${{ matrix.service }}
-        run: npm test -- --coverage
-        env:
-          NODE_ENV: test
-          DATABASE_URL: postgresql://postgres:test_password@localhost:5432/devhub_test
-          MONGODB_URI: mongodb://root:test_password@localhost:27017/devhub_test?authSource=admin
-          REDIS_URL: redis://localhost:6379
-          JWT_SECRET: test_jwt_secret
-          ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-      
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
-        with:
-          files: ./backend/${{ matrix.service }}/coverage/lcov.info
-          flags: backend-${{ matrix.service }}
-          name: ${{ matrix.service }}
-
-  test-frontend:
-    name: Frontend Tests
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-      
-      - name: Install dependencies
-        working-directory: frontend
-        run: npm ci
-      
-      - name: Run unit tests
-        working-directory: frontend
-        run: npm test -- --coverage
-        env:
-          NODE_ENV: test
-      
-      - name: Build application
-        working-directory: frontend
-        run: npm run build
-        env:
-          NODE_ENV: production
-      
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
-        with:
-          files: ./frontend/coverage/lcov.info
-          flags: frontend
-          name: frontend
-
-  e2e-tests:
-    name: E2E Tests
-    runs-on: ubuntu-latest
-    needs: [test-backend, test-frontend]
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-      
-      - name: Install dependencies
-        run: npm ci
-      
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
-      
-      - name: Start Docker services
-        run: docker-compose -f docker-compose.test.yml up -d
-      
-      - name: Wait for services to be healthy
-        run: |
-          echo "Waiting for services..."
-          timeout 180 bash -c 'until curl -f http://localhost:3000/health; do sleep 5; done'
-          echo "Services are ready!"
-      
-      - name: Run E2E tests
-        run: npm run test:e2e
-        env:
-          BASE_URL: http://localhost:3000
-      
-      - name: Upload Playwright report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report
-          path: playwright-report/
-          retention-days: 30
-      
-      - name: Stop Docker services
-        if: always()
-        run: docker-compose -f docker-compose.test.yml down -v
-
-  security-scan:
-    name: Security Scanning
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-      
-      - name: Run npm audit (Backend)
+    defaults:
+      run:
         working-directory: backend
-        run: npm audit --audit-level=moderate
-        continue-on-error: true
-      
-      - name: Run npm audit (Frontend)
-        working-directory: frontend
-        run: npm audit --audit-level=moderate
-        continue-on-error: true
-      
-      - name: Run Snyk security scan
-        uses: snyk/actions/node@master
-        continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npx prisma validate
         env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          command: test
-          args: --all-projects --detection-depth=4
-      
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-      
-      - name: Upload Trivy results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: 'trivy-results.sarif'
+          DATABASE_URL: postgresql://user:pass@localhost:5432/db
+      - run: npx prisma generate
+      - run: npm run typecheck
+      - run: npm run build
 
-  build-docker:
-    name: Build Docker Images
+  frontend:
     runs-on: ubuntu-latest
-    needs: [lint, test-backend, test-frontend, security-scan]
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
-    
-    strategy:
-      matrix:
-        service:
-          - api-gateway
-          - auth-service
-          - email-service
-          - notification-service
-          - file-service
-          - analytics-service
-          - search-service
-          - video-service
-          - editor-service
-          - payment-service
-          - kanban-service
-          - graphql-api
-          - websocket-server
-    
+    defaults:
+      run:
+        working-directory: frontend
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-      
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: devhub/${{ matrix.service }}
-          tags: |
-            type=ref,event=branch
-            type=sha,prefix={{branch}}-
-            type=semver,pattern={{version}}
-      
-      - name: Build and push
-        uses: docker/build-push-action@v5
-        with:
-          context: ./backend/${{ matrix.service }}
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=devhub/${{ matrix.service }}:buildcache
-          cache-to: type=registry,ref=devhub/${{ matrix.service }}:buildcache,mode=max
-          platforms: linux/amd64,linux/arm64
-
-  build-frontend-docker:
-    name: Build Frontend Docker Image
-    runs-on: ubuntu-latest
-    needs: [lint, test-frontend, security-scan]
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-      
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: devhub/frontend
-          tags: |
-            type=ref,event=branch
-            type=sha,prefix={{branch}}-
-            type=semver,pattern={{version}}
-      
-      - name: Build and push
-        uses: docker/build-push-action@v5
-        with:
-          context: ./frontend
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=devhub/frontend:buildcache
-          cache-to: type=registry,ref=devhub/frontend:buildcache,mode=max
-          platforms: linux/amd64,linux/arm64
-
-  notify:
-    name: Notify Results
-    runs-on: ubuntu-latest
-    needs: [lint, test-backend, test-frontend, e2e-tests, security-scan]
-    if: always()
-    
-    steps:
-      - name: Send Slack notification
-        uses: 8398a7/action-slack@v3
-        if: always()
-        with:
-          status: ${{ job.status }}
-          text: |
-            CI Pipeline ${{ job.status }}
-            Branch: ${{ github.ref_name }}
-            Commit: ${{ github.sha }}
-            Author: ${{ github.actor }}
-          webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
-          fields: repo,message,commit,author,action,eventName,ref,workflow
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:5000/api

@@ -1,126 +1,108 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import Link from 'next/link'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { useQuery } from '@tanstack/react-query'
+import { Search } from 'lucide-react'
+import { courseApi, type Level } from '../../lib/api'
+import { CourseCard } from '../../components/course-card'
+import { Empty, ErrorBox, Loading } from '../../components/state'
 import { Button } from '../../components/ui/button'
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../../components/ui/card'
-import { Badge } from '../../components/ui/badge'
 import { Input } from '../../components/ui/input'
-import { getCourses, type Course } from '../../lib/api'
+import { Select } from '../../components/ui/select'
 
-const CATEGORIES = ['All', 'Frontend', 'Backend', 'Languages', 'Database', 'DevOps', 'Full-Stack']
+type Sort = 'newest' | 'popular' | 'price_asc' | 'price_desc'
+
+function useDebounced<T>(value: T, ms = 300) {
+  const [debounced, setDebounced] = useState(value)
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), ms)
+    return () => clearTimeout(t)
+  }, [value, ms])
+  return debounced
+}
 
 export default function CoursesPage() {
-  const [searchQuery, setSearchQuery] = useState('')
-  const [selectedCategory, setSelectedCategory] = useState('All')
-  const [courses, setCourses] = useState<Course[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+  const initialCategory = useSearchParams().get('category') ?? 'All'
+  const [category, setCategory] = useState(initialCategory)
+  const [level, setLevel] = useState<Level | ''>('')
+  const [sort, setSort] = useState<Sort>('newest')
+  const [page, setPage] = useState(1)
+  const debouncedSearch = useDebounced(search)
 
-  useEffect(() => {
-    setLoading(true)
-    setError(null)
-    getCourses({ category: selectedCategory, search: searchQuery })
-      .then(setCourses)
-      .catch((err: Error) => setError(err.message))
-      .finally(() => setLoading(false))
-  }, [selectedCategory, searchQuery])
+  useEffect(() => setPage(1), [debouncedSearch, category, level, sort])
+
+  const categories = useQuery({ queryKey: ['categories'], queryFn: courseApi.categories })
+  const courses = useQuery({
+    queryKey: ['courses', debouncedSearch, category, level, sort, page],
+    queryFn: () => courseApi.list({ search: debouncedSearch || undefined, category, level, sort, page, pageSize: 12 }),
+    placeholderData: (prev) => prev,
+  })
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
-      {/* Header */}
-      <div className="bg-white dark:bg-gray-800 shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <Link href="/" className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
-              DevForge
-            </Link>
-            <div className="flex gap-4">
-              <Link href="/login" className="text-gray-600 dark:text-gray-300 hover:text-indigo-600">
-                Login
-              </Link>
-              <Link href="/signup" className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
-                Sign Up
-              </Link>
-            </div>
-          </div>
+    <div className="mx-auto max-w-7xl px-4 py-10">
+      <h1 className="text-3xl font-bold">Browse courses</h1>
+      <p className="mt-1 text-muted-foreground">Project-based lessons, quizzes and certificates.</p>
+
+      <div className="mt-6 grid gap-3 md:grid-cols-[1fr_auto_auto_auto]">
+        <div className="relative">
+          <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search courses…" className="pl-9" aria-label="Search courses" />
         </div>
+        <Select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Category" className="md:w-44">
+          <option value="All">All categories</option>
+          {categories.data?.map((c) => (
+            <option key={c.name} value={c.name}>
+              {c.name} ({c.count})
+            </option>
+          ))}
+        </Select>
+        <Select value={level} onChange={(e) => setLevel(e.target.value as Level | '')} aria-label="Level" className="md:w-40">
+          <option value="">All levels</option>
+          <option value="BEGINNER">Beginner</option>
+          <option value="INTERMEDIATE">Intermediate</option>
+          <option value="ADVANCED">Advanced</option>
+        </Select>
+        <Select value={sort} onChange={(e) => setSort(e.target.value as Sort)} aria-label="Sort by" className="md:w-44">
+          <option value="newest">Newest</option>
+          <option value="popular">Most popular</option>
+          <option value="price_asc">Price: low to high</option>
+          <option value="price_desc">Price: high to low</option>
+        </Select>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-8">Explore Courses</h1>
-
-        {/* Search and Filters */}
-        <div className="mb-8 space-y-4">
-          <Input
-            type="text"
-            placeholder="Search courses..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="max-w-md"
-          />
-          <div className="flex gap-2 flex-wrap">
-            {CATEGORIES.map(category => (
-              <Button
-                key={category}
-                variant={selectedCategory === category ? 'default' : 'outline'}
-                onClick={() => setSelectedCategory(category)}
-                size="sm"
-              >
-                {category}
-              </Button>
-            ))}
-          </div>
-        </div>
-
-        {/* States */}
-        {loading && (
-          <div className="text-center py-12 text-muted-foreground">Loading courses…</div>
-        )}
-        {error && (
-          <div className="text-center py-12 text-red-500">Failed to load courses: {error}</div>
-        )}
-
-        {/* Course Grid */}
-        {!loading && !error && (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {courses.map(course => (
-              <Card key={course.id} className="hover:shadow-lg transition-shadow">
-                <CardHeader>
-                  <div className="flex items-start justify-between mb-2">
-                    <Badge variant="secondary">{course.category}</Badge>
-                    <Badge variant="outline">{course.level}</Badge>
-                  </div>
-                  <CardTitle className="text-xl">{course.title}</CardTitle>
-                  <CardDescription>{course.description}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2 text-sm text-muted-foreground">
-                    <div className="flex items-center justify-between">
-                      <span>Instructor: {course.instructor}</span>
-                      <span className="flex items-center">⭐ {course.rating}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span>👥 {course.students.toLocaleString()} students</span>
-                      <span>⏱️ {course.duration}</span>
-                    </div>
-                  </div>
-                </CardContent>
-                <CardFooter className="flex items-center justify-between">
-                  <div className="text-2xl font-bold text-indigo-600">${course.price}</div>
-                  <Link href={`/courses/${course.id}`}>
-                    <Button>View Course</Button>
-                  </Link>
-                </CardFooter>
-              </Card>
-            ))}
-          </div>
-        )}
-
-        {!loading && !error && courses.length === 0 && (
-          <div className="text-center py-12 text-muted-foreground">
-            No courses found matching your criteria.
-          </div>
+      <div className="mt-8">
+        {courses.isLoading ? (
+          <Loading />
+        ) : courses.isError ? (
+          <ErrorBox error={courses.error} onRetry={() => courses.refetch()} />
+        ) : courses.data!.data.length === 0 ? (
+          <Empty title="No courses match your filters">Try a different search or clear the filters.</Empty>
+        ) : (
+          <>
+            <p className="mb-4 text-sm text-muted-foreground">
+              {courses.data!.total} course{courses.data!.total === 1 ? '' : 's'}
+            </p>
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {courses.data!.data.map((c) => (
+                <CourseCard key={c.id} course={c} />
+              ))}
+            </div>
+            {courses.data!.totalPages > 1 && (
+              <div className="mt-8 flex items-center justify-center gap-3">
+                <Button variant="outline" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                  Previous
+                </Button>
+                <span className="text-sm text-muted-foreground">
+                  Page {page} of {courses.data!.totalPages}
+                </span>
+                <Button variant="outline" disabled={page >= courses.data!.totalPages} onClick={() => setPage((p) => p + 1)}>
+                  Next
+                </Button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

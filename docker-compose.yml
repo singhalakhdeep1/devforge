@@ -1,78 +1,42 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: devhub-postgres
-    restart: unless-stopped
     environment:
-      POSTGRES_DB: devhub
-      POSTGRES_USER: devhub_user
-      POSTGRES_PASSWORD: devhub_password
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: devforge
+      POSTGRES_USER: devforge
+      POSTGRES_PASSWORD: devforge_password
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - devhub-network
+      - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U devhub_user" ]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U devforge -d devforge"]
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
-  mongodb:
-    image: mongo:7
-    container_name: devhub-mongodb
-    restart: unless-stopped
+  backend:
+    build: ./backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: ./backend/.env
     environment:
-      MONGO_INITDB_ROOT_USERNAME: devhub_mongo
-      MONGO_INITDB_ROOT_PASSWORD: mongo_password
+      DATABASE_URL: postgresql://devforge:devforge_password@postgres:5432/devforge
+      FRONTEND_URL: http://localhost:3000
     ports:
-      - "27017:27017"
+      - "5000:5000"
     volumes:
-      - mongodb_data:/data/db
-    networks:
-      - devhub-network
-    healthcheck:
-      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - uploads:/app/uploads
 
-  redis:
-    image: redis:7-alpine
-    container_name: devhub-redis
-    restart: unless-stopped
-    command: redis-server --requirepass redis_password
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:5000/api
+    depends_on:
+      - backend
     ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    networks:
-      - devhub-network
-    healthcheck:
-      test: [ "CMD", "redis-cli", "--raw", "incr", "ping" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  jaeger:
-    image: jaegertracing/all-in-one:1.51
-    container_name: devhub-jaeger
-    restart: unless-stopped
-    ports:
-      - "16686:16686"
-      - "14268:14268"
-    networks:
-      - devhub-network
+      - "3000:3000"
 
 volumes:
-  postgres_data:
-  mongodb_data:
-  redis_data:
-
-
-networks:
-  devhub-network:
-    driver: bridge
+  pgdata:
+  uploads:

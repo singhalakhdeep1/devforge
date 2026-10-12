@@ -7,35 +7,40 @@ generator client {
   provider = "prisma-client-js"
 }
 
-model Project {
-  id          String   @id @default(uuid())
-  name        String
-  repository  String
-  status      String   @default("ACTIVE")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  deployments Deployment[]
+enum Role {
+  STUDENT
+  INSTRUCTOR
+  ADMIN
 }
 
-model Deployment {
-  id        String   @id @default(uuid())
-  projectId String
-  environment String @default("production")
-  status    String   @default("SUCCESS") // 'BUILDING' | 'DEPLOYING' | 'SUCCESS' | 'FAILED'
-  logs      String?
-  createdAt DateTime @default(now())
+enum Level {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+enum LessonType {
+  ARTICLE
+  VIDEO
+  QUIZ
+  EXERCISE
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  FAILED
 }
 
 model User {
   id                String    @id @default(uuid())
   email             String    @unique
-  password          String?
+  password          String
   name              String
   avatar            String?
-  role              String    @default("STUDENT")
+  role              Role      @default(STUDENT)
   bio               String?
+  location          String?
   skills            String[]
   githubUrl         String?
   linkedinUrl       String?
@@ -46,62 +51,219 @@ model User {
   resetTokenExpiry  DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
-  enrollments       Enrollment[]
+
+  coursesTaught  Course[]
+  enrollments    Enrollment[]
+  progress       LessonProgress[]
+  quizAttempts   QuizAttempt[]
+  discussions    Discussion[]
+  answers        Answer[]
+  answerVotes    AnswerVote[]
+  snippets       Snippet[]
+  reviews        Review[]
+  notifications  Notification[]
+  certificates   Certificate[]
+  orders         Order[]
+  refreshTokens  RefreshToken[]
+
+  @@map("users")
+}
+
+// Hashed refresh tokens so sessions can be rotated and revoked (logout, password change).
+model RefreshToken {
+  id        String    @id @default(uuid())
+  tokenHash String    @unique
+  userId    String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
 }
 
 model Course {
-  id          Int          @id @default(autoincrement())
+  id           Int      @id @default(autoincrement())
+  title        String
+  description  String
+  category     String   @default("General")
+  level        Level    @default(BEGINNER)
+  price        Decimal  @default(0) @db.Decimal(10, 2)
+  published    Boolean  @default(false)
+  thumbnailUrl String?
+  instructorId String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  instructor   User         @relation(fields: [instructorId], references: [id], onDelete: Cascade)
+  modules      Module[]
+  enrollments  Enrollment[]
+  discussions  Discussion[]
+  reviews      Review[]
+  certificates Certificate[]
+  orders       Order[]
+
+  @@index([instructorId])
+  @@index([published, category])
+  @@map("courses")
+}
+
+model Module {
+  id       Int    @id @default(autoincrement())
+  courseId Int
+  title    String
+  position Int    @default(0)
+
+  course  Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons Lesson[]
+
+  @@index([courseId, position])
+  @@map("modules")
+}
+
+model Lesson {
+  id          Int        @id @default(autoincrement())
+  moduleId    Int
   title       String
-  description String
-  instructor  String
-  rating      Float        @default(0)
-  students    Int          @default(0)
-  duration    String
-  level       String       @default("Beginner")
-  price       Float        @default(0)
-  category    String       @default("General")
-  modules     Json         @default("[]")
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  enrollments Enrollment[]
+  type        LessonType @default(ARTICLE)
+  content     String     @default("") // Markdown body (articles / exercise instructions)
+  videoUrl    String?
+  durationMin Int        @default(5)
+  position    Int        @default(0)
+
+  module      Module           @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  questions   QuizQuestion[]
+  progress    LessonProgress[]
+  attempts    QuizAttempt[]
+  discussions Discussion[]
+
+  @@index([moduleId, position])
+  @@map("lessons")
+}
+
+model QuizQuestion {
+  id            Int      @id @default(autoincrement())
+  lessonId      Int
+  position      Int      @default(0)
+  question      String
+  options       String[]
+  correctAnswer Int
+  explanation   String?
+
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@index([lessonId, position])
+  @@map("quiz_questions")
 }
 
 model Enrollment {
-  id               Int      @id @default(autoincrement())
-  userId           String
-  courseId         Int
-  progress         Int      @default(0)
-  completedLessons Int      @default(0)
-  enrolledAt       DateTime @default(now())
-  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  course           Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  id          Int       @id @default(autoincrement())
+  userId      String
+  courseId    Int
+  enrolledAt  DateTime  @default(now())
+  lastAccessAt DateTime @default(now())
+  completedAt DateTime?
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
   @@unique([userId, courseId])
+  @@index([courseId])
+  @@map("enrollments")
 }
 
+model LessonProgress {
+  id          Int      @id @default(autoincrement())
+  userId      String
+  lessonId    Int
+  completedAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, lessonId])
+  @@index([userId, completedAt])
+  @@map("lesson_progress")
+}
+
+model QuizAttempt {
+  id             Int      @id @default(autoincrement())
+  userId         String
+  lessonId       Int
+  score          Int // percentage 0-100
+  passed         Boolean
+  totalQuestions Int
+  correctAnswers Int
+  submittedAt    DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@index([userId, lessonId])
+  @@map("quiz_attempts")
+}
 
 model Discussion {
   id        Int      @id @default(autoincrement())
   courseId  Int
+  lessonId  Int?
   userId    String
   title     String
   content   String
   createdAt DateTime @default(now())
-  answers   Answer[]
 
-  @@index([courseId])
+  course  Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lesson  Lesson?  @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answers Answer[]
+
+  @@index([courseId, createdAt])
+  @@map("discussions")
 }
 
 model Answer {
-  id           Int        @id @default(autoincrement())
+  id           Int      @id @default(autoincrement())
   discussionId Int
   userId       String
   content      String
-  upvotes      Int        @default(0)
-  createdAt    DateTime   @default(now())
-  discussion   Discussion @relation(fields: [discussionId], references: [id], onDelete: Cascade)
+  accepted     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  discussion Discussion   @relation(fields: [discussionId], references: [id], onDelete: Cascade)
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  votes      AnswerVote[]
 
   @@index([discussionId])
+  @@map("answers")
+}
+
+// One vote per user per answer.
+model AnswerVote {
+  userId   String
+  answerId Int
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answer Answer @relation(fields: [answerId], references: [id], onDelete: Cascade)
+
+  @@id([userId, answerId])
+  @@map("answer_votes")
+}
+
+model Review {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  courseId  Int
+  rating    Int // 1-5
+  comment   String   @default("")
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId])
+  @@index([courseId])
+  @@map("reviews")
 }
 
 model Snippet {
@@ -114,28 +276,54 @@ model Snippet {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  @@index([userId])
-}
-
-model QuizQuestion {
-  id            Int      @id @default(autoincrement())
-  lessonId      String
-  position      Int      @default(0)
-  question      String
-  options       String[]
-  correctAnswer Int
-
-  @@index([lessonId])
-}
-
-model QuizResult {
-  id             Int      @id @default(autoincrement())
-  userId         String
-  lessonId       String
-  score          Int
-  totalQuestions Int
-  correctAnswers Int
-  submittedAt    DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@map("snippets")
+}
+
+model Notification {
+  id        Int       @id @default(autoincrement())
+  userId    String
+  type      String // enrollment | answer | certificate | quiz | system
+  title     String
+  body      String    @default("")
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@map("notifications")
+}
+
+model Certificate {
+  id       String   @id @default(uuid()) // public verification code
+  userId   String
+  courseId Int
+  issuedAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId])
+  @@map("certificates")
+}
+
+model Order {
+  id              Int         @id @default(autoincrement())
+  userId          String
+  courseId        Int
+  amount          Decimal     @db.Decimal(10, 2)
+  status          OrderStatus @default(PENDING)
+  stripeSessionId String?     @unique
+  createdAt       DateTime    @default(now())
+  paidAt          DateTime?
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@index([userId, courseId])
+  @@map("orders")
 }

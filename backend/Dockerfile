@@ -1,27 +1,23 @@
-FROM node:18-alpine
-
+FROM node:20-alpine AS build
 WORKDIR /app
-
-# Copy package files
-COPY package*.json ./
-
-# Install dependencies
+RUN apk add --no-cache openssl
+COPY package.json package-lock.json ./
 RUN npm ci
-
-# Copy prisma schema
 COPY prisma ./prisma
+COPY tsconfig.json ./
+COPY src ./src
+RUN npx prisma generate && npx tsc
 
-# Generate Prisma Client
+FROM node:20-alpine
+WORKDIR /app
+ENV NODE_ENV=production
+RUN apk add --no-cache openssl
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+COPY prisma ./prisma
 RUN npx prisma generate
-
-# Copy source code
-COPY . .
-
-# Build TypeScript
-RUN npm run build
-
-# Expose port
+COPY --from=build /app/dist ./dist
+RUN mkdir -p uploads && chown -R node:node /app
+USER node
 EXPOSE 5000
-
-# Start server
-CMD ["npm", "start"]
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/server.js"]

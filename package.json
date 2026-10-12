@@ -1,27 +1,18 @@
 {
-    "name": "devforge",
-    "version": "1.0.0",
-    "description": "Complete full-stack developer platform with learning management",
-    "private": true,
-    "scripts": {
-        "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
-        "dev:backend": "cd backend && npm run dev",
-        "dev:frontend": "cd frontend && npm run dev",
-        "build": "npm run build:frontend && npm run build:backend",
-        "build:frontend": "cd frontend && npm run build",
-        "build:backend": "cd backend && npm run build",
-        "install:all": "cd frontend && npm install && cd ../backend && npm install",
-        "docker:up": "docker-compose up -d",
-        "docker:down": "docker-compose down"
-    },
-    "devDependencies": {
-        "@types/node": "^20",
-        "concurrently": "^8.2.2",
-        "prettier": "^3.1.1",
-        "typescript": "^5"
-    },
-    "engines": {
-        "node": ">=20.0.0",
-        "npm": ">=10.0.0"
-    }
+  "name": "devforge",
+  "version": "1.0.0",
+  "description": "Developer learning platform: courses, quizzes, certificates, live code editor",
+  "private": true,
+  "scripts": {
+    "install:all": "npm --prefix backend install && npm --prefix frontend install",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "build": "npm --prefix backend run build && npm --prefix frontend run build",
+    "typecheck": "npm --prefix backend run typecheck && npm --prefix frontend run typecheck",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down"
+  },
+  "engines": {
+    "node": ">=20"
+  }
 }
