@@ -15,7 +15,8 @@
     "backend/file-service",
     "backend/elasticsearch-service",
     "backend/search-service",
-    "backend/email-service"
+    "backend/email-service",
+    "backend/analytics-service"
   ],
   "scripts": {
     "build:shared": "npm run build -w @devhub/shared",

@@ -67,6 +67,14 @@ router.get(
 )
 
 router.get(
+    '/instructors/:id/courses',
+    handle(async (req, res) => {
+        const rows = await prisma.course.findMany({ where: { instructorId: req.params.id }, select: { id: true } })
+        res.json({ ids: rows.map((r) => r.id) })
+    })
+)
+
+router.get(
     '/enrollments/:userId/:courseId',
     handle(async (req, res) => {
         const e = await prisma.enrollment.findUnique({ where: { userId_courseId: { userId: req.params.userId, courseId: intParam(req.params.courseId) } } })
