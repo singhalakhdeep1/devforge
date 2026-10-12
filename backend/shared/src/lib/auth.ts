@@ -10,11 +10,9 @@ export interface AuthUser {
   name?: string;
 }
 
-declare module 'express-serve-static-core' {
-  interface Request {
-    user?: AuthUser;
-  }
-}
+/** Services declare their own `req.user` typing; shared reads and writes it untyped. */
+const setUser = (req: Request, user: AuthUser | undefined) => { (req as any).user = user; };
+const getUser = (req: Request): AuthUser | undefined => (req as any).user;
 
 const accessSecret = () => process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || 'dev-only-access-secret-change-me';
 
@@ -38,11 +36,11 @@ export const userFromHeaders = (req: Request): AuthUser | undefined => {
 
 /** Identify the caller if possible but do not require it. */
 export const attachUser: RequestHandler = (req, _res, next) => {
-  req.user = userFromHeaders(req);
-  if (!req.user) {
+  setUser(req, userFromHeaders(req));
+  if (!getUser(req)) {
     const h = req.headers.authorization;
     if (h?.startsWith('Bearer ')) {
-      try { req.user = verifyAccessToken(h.slice(7)); } catch { /* invalid token: treated as anonymous */ }
+      try { setUser(req, verifyAccessToken(h.slice(7))); } catch { /* invalid token: treated as anonymous */ }
     }
   }
   next();
@@ -50,16 +48,18 @@ export const attachUser: RequestHandler = (req, _res, next) => {
 
 /** Requires a signed-in user (via gateway headers or a bearer token). */
 export const authenticate: RequestHandler = (req, res, next) => {
-  attachUser(req, res, () => (req.user ? next() : next(AppError.unauthorized())));
+  attachUser(req, res, () => (getUser(req) ? next() : next(AppError.unauthorized())));
 };
 
 export const requireRole = (...roles: string[]): RequestHandler => (req, res, next) => {
   authenticate(req, res, (err?: unknown) => {
     if (err) return next(err);
-    return roles.includes(req.user!.role) ? next() : next(AppError.forbidden());
+    return roles.includes(getUser(req)!.role) ? next() : next(AppError.forbidden());
   });
 };
 
 /** Service-to-service endpoints: only callers that present the internal key. */
 export const internalOnly: RequestHandler = (req: Request, _res: Response, next: NextFunction) =>
   req.headers['x-internal-key'] === internalKey() ? next() : next(AppError.forbidden('Internal endpoint'));
+
+export const userOf = getUser;

@@ -8,6 +8,7 @@ import {
   authenticate,
   createEventBus,
   createLogger,
+  createServiceClient,
   emit,
   getRedis,
   internalOnly,
@@ -35,6 +36,7 @@ import { consumeBackupCode, decryptSecret, encryptSecret, hashBackupCodes, newBa
 
 const log = createLogger('auth');
 const bus = createEventBus('auth');
+const courses = createServiceClient('course');
 const router = Router();
 
 /* ───────────────────────── helpers ───────────────────────── */
@@ -258,6 +260,10 @@ router.post('/change-password', authenticate, credentialLimit, validate(changePa
 router.delete('/me', authenticate, validate(z.object({ password: z.string().optional() })), asyncHandler(async (req, res) => {
   const user = await prisma.user.findUniqueOrThrow({ where: { id: req.user!.id } });
   if (user.passwordHash && !(await bcrypt.compare(String(req.body.password ?? ''), user.passwordHash))) throw AppError.badRequest('Password is incorrect');
+  // Deleting an instructor would delete their courses out from under enrolled students.
+  // Fails closed: if the course service cannot answer, the account is kept.
+  const check = await courses.get<{ allowed: boolean; reason?: string }>(`/internal/users/${user.id}/can-delete`);
+  if (!check.allowed) throw AppError.conflict(check.reason ?? 'This account cannot be deleted right now');
   await prisma.user.delete({ where: { id: user.id } });
   emit(bus, TOPICS.userDeleted, 'user.deleted', { id: user.id, email: user.email }, user.id);
   res.clearCookie(cookieName, { ...cookieOptions, maxAge: undefined });

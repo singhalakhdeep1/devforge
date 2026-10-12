@@ -12,3 +12,4 @@ export * from './lib/metrics';
 export * from './services/cache/cache.service';
 export * from './services/rate-limiting/rate-limiting.service';
 export * from './services/structured-logging/structured-logging.service';
+export * from './lib/http-cache';

@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { Level, Prisma } from '@prisma/client'
+import { Level, Prisma } from '../generated/client'
 import { z } from 'zod'
 import { badRequest, forbidden, handle, intParam, notFound } from '../lib/errors'
 import { getProgress } from '../lib/learning'

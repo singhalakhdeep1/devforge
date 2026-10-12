@@ -1,4 +1,4 @@
-import { Role } from '@prisma/client'
+import { Role } from '../generated/client'
 import { prisma } from './prisma'
 import { forbidden, notFound } from './errors'
 import { notify } from './notify'

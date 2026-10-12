@@ -1,12 +1,9 @@
-import { NextFunction, Request, RequestHandler, Response } from 'express'
+import { AppError, asyncHandler } from '@devhub/shared'
 
-export class HttpError extends Error {
-    constructor(
-        public statusCode: number,
-        message: string,
-        public details?: unknown
-    ) {
-        super(message)
+/** Kept as a thin layer over the shared AppError so route code reads the same as before. */
+export class HttpError extends AppError {
+    constructor(statusCode: number, message: string, details?: unknown) {
+        super(statusCode, message, undefined, details)
     }
 }
 
@@ -16,14 +13,8 @@ export const forbidden = (message = 'Forbidden') => new HttpError(403, message)
 export const notFound = (what = 'Resource') => new HttpError(404, `${what} not found`)
 export const conflict = (message: string) => new HttpError(409, message)
 
-type AsyncHandler = (req: Request, res: Response, next: NextFunction) => Promise<unknown>
-
 /** Forwards rejected promises to the error middleware (Express 4 does not do this itself). */
-export const handle =
-    (fn: AsyncHandler): RequestHandler =>
-    (req, res, next) => {
-        fn(req, res, next).catch(next)
-    }
+export const handle = asyncHandler
 
 /** Parses a numeric route param; throws a 400 instead of passing NaN to Prisma. */
 export const intParam = (value: string | undefined, name = 'id'): number => {

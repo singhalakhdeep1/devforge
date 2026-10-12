@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { Level, LessonType } from '@prisma/client'
+import { Level, LessonType, Role } from '../generated/client'
 import { z } from 'zod'
 import { badRequest, conflict, handle, intParam, notFound } from '../lib/errors'
 import { assertCourseOwner } from '../lib/learning'
@@ -54,7 +54,7 @@ router.get(
         const [enrolled, completed, revenue, ratings] = await Promise.all([
             prisma.enrollment.groupBy({ by: ['courseId'], where: { courseId: { in: ids } }, _count: true }),
             prisma.enrollment.groupBy({ by: ['courseId'], where: { courseId: { in: ids }, completedAt: { not: null } }, _count: true }),
-            prisma.order.groupBy({ by: ['courseId'], where: { courseId: { in: ids }, status: 'PAID' }, _sum: { amount: true } }),
+            prisma.coursePayment.groupBy({ by: ['courseId'], where: { courseId: { in: ids } }, _sum: { amount: true } }),
             prisma.review.groupBy({ by: ['courseId'], where: { courseId: { in: ids } }, _avg: { rating: true }, _count: true }),
         ])
         const pick = <T extends { courseId: number }>(rows: T[], id: number) => rows.find((r) => r.courseId === id)
@@ -159,14 +159,14 @@ router.post(
     })
 )
 
-async function moduleOwned(req: { user: { id: string; role: 'STUDENT' | 'INSTRUCTOR' | 'ADMIN' } }, moduleId: number) {
+async function moduleOwned(req: { user: { id: string; role: Role } }, moduleId: number) {
     const module = await prisma.module.findUnique({ where: { id: moduleId } })
     if (!module) throw notFound('Module')
     await assertCourseOwner(req.user, module.courseId)
     return module
 }
 
-async function lessonOwned(req: { user: { id: string; role: 'STUDENT' | 'INSTRUCTOR' | 'ADMIN' } }, lessonId: number) {
+async function lessonOwned(req: { user: { id: string; role: Role } }, lessonId: number) {
     const lesson = await prisma.lesson.findUnique({ where: { id: lessonId }, include: { module: { select: { courseId: true } } } })
     if (!lesson) throw notFound('Lesson')
     await assertCourseOwner(req.user, lesson.module.courseId)

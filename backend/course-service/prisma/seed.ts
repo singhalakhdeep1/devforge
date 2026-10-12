@@ -1,17 +1,19 @@
 /**
  * Seeds demo content: an instructor, a student and three published courses with
- * lessons and quizzes. Safe to run repeatedly. Optionally creates an admin when
- * ADMIN_EMAIL and ADMIN_PASSWORD are set.
+ * lessons and quizzes. Safe to run repeatedly.
  *
- * Demo logins (password for both: Password123)
- *   instructor@devforge.dev   student@devforge.dev
+ * Demo logins (password for all: Password123) are created by the auth-service seed.
+ *   instructor@devforge.dev   student@devforge.dev   admin@devforge.dev
  */
-import { LessonType, Level, PrismaClient } from '@prisma/client'
-import bcrypt from 'bcryptjs'
-import { config } from 'dotenv'
+import { LessonType, Level, PrismaClient } from '../src/generated/client'
 
-config()
 const prisma = new PrismaClient()
+
+// Fixed ids shared with the auth-service seed, so both services describe the same people
+const IDS = {
+    instructor: '00000000-0000-4000-8000-000000000001',
+    student: '00000000-0000-4000-8000-000000000002',
+}
 
 interface Q {
     question: string
@@ -227,25 +229,26 @@ const courses: SeedCourse[] = [
     },
 ]
 
-async function ensureUser(email: string, name: string, role: 'STUDENT' | 'INSTRUCTOR' | 'ADMIN', plain: string, extra: object = {}) {
-    return prisma.user.upsert({
-        where: { email },
-        update: {},
-        create: { email, name, role, isVerified: true, password: await bcrypt.hash(plain, 12), ...extra },
-    })
-}
-
 async function main() {
-    const instructor = await ensureUser('instructor@devforge.dev', 'Alicia Reed', 'INSTRUCTOR', 'Password123', {
-        bio: 'Staff engineer and teacher. I build and explain web backends.',
-        skills: ['JavaScript', 'Node.js', 'PostgreSQL'],
+    // Users live in the auth-service; this service keeps a projection used for joins
+    const instructor = await prisma.user.upsert({
+        where: { id: IDS.instructor },
+        update: {},
+        create: {
+            id: IDS.instructor,
+            email: 'instructor@devforge.dev',
+            name: 'Alicia Reed',
+            role: 'INSTRUCTOR',
+            isVerified: true,
+            bio: 'Staff engineer and teacher. I build and explain web backends.',
+            skills: ['JavaScript', 'Node.js', 'PostgreSQL'],
+        },
     })
-    await ensureUser('student@devforge.dev', 'Sam Student', 'STUDENT', 'Password123')
-
-    if (process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD) {
-        await ensureUser(process.env.ADMIN_EMAIL, 'Administrator', 'ADMIN', process.env.ADMIN_PASSWORD)
-        console.log(`Admin account ready: ${process.env.ADMIN_EMAIL}`)
-    }
+    await prisma.user.upsert({
+        where: { id: IDS.student },
+        update: {},
+        create: { id: IDS.student, email: 'student@devforge.dev', name: 'Sam Student', role: 'STUDENT', isVerified: true },
+    })
 
     for (const c of courses) {
         if (await prisma.course.findFirst({ where: { title: c.title, instructorId: instructor.id } })) continue

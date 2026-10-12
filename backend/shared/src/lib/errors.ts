@@ -33,9 +33,12 @@ export const validate =
   (req, _res, next) => {
     const parsed = schema.safeParse(req[source]);
     if (!parsed.success) {
-      return next(AppError.badRequest('Validation failed', parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message }))));
+      const issues = parsed.error.issues.map((i) => ({ field: i.path.join('.'), message: i.message }));
+      const first = issues[0];
+      return next(AppError.badRequest(first ? `${first.field ? first.field + ': ' : ''}${first.message}` : 'Invalid request', issues));
     }
-    (req as any)[source] = parsed.data;
+    // req.query is a getter in newer Express versions, so define the property instead of assigning
+    Object.defineProperty(req, source, { value: parsed.data, writable: true, configurable: true });
     next();
   };
 
@@ -45,11 +48,17 @@ export const errorHandler = (service: string) => {
   const log = createLogger(service);
   return (err: any, _req: Request, res: Response, _next: NextFunction) => {
     if (err instanceof ZodError) {
-      return res.status(400).json({ success: false, error: 'Validation failed', code: 'BAD_REQUEST', details: err.issues });
+      const first = err.issues[0];
+      return res.status(400).json({ success: false, error: first ? `${first.path.join('.')}${first.path.length ? ': ' : ''}${first.message}` : 'Validation failed', code: 'BAD_REQUEST', details: err.issues });
     }
     if (err instanceof AppError) {
       if (err.statusCode >= 500) log.logError(err.message, err.stack ?? '');
       return res.status(err.statusCode).json({ success: false, error: err.message, code: err.code, details: err.details });
+    }
+    if (err?.name === 'PrismaClientKnownRequestError') {
+      if (err.code === 'P2025') return res.status(404).json({ success: false, error: 'Resource not found', code: 'NOT_FOUND' });
+      if (err.code === 'P2002') return res.status(409).json({ success: false, error: 'A record with these values already exists', code: 'CONFLICT' });
+      if (err.code === 'P2003') return res.status(400).json({ success: false, error: 'Related record does not exist', code: 'BAD_REQUEST' });
     }
     if (err?.type === 'entity.too.large') return res.status(413).json({ success: false, error: 'Payload too large', code: 'TOO_LARGE' });
     if (err?.type === 'entity.parse.failed') return res.status(400).json({ success: false, error: 'Invalid JSON body', code: 'BAD_REQUEST' });

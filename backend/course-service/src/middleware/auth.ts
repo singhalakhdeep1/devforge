@@ -1,52 +1,66 @@
 import { NextFunction, Request, Response } from 'express'
-import { Role } from '@prisma/client'
+import { attachUser } from '@devhub/shared'
+import { Role } from '../generated/client'
 import { forbidden, unauthorized } from '../lib/errors'
 import { prisma } from '../lib/prisma'
-import { verifyAccessToken } from '../lib/tokens'
 
 declare global {
     namespace Express {
         interface Request {
+            /** Set by protect / optionalAuth; read from the verified token, never from client input. */
             user: { id: string; role: Role; name: string; email: string }
         }
     }
 }
 
-const bearer = (req: Request): string | undefined => {
-    const header = req.headers.authorization
-    return header?.startsWith('Bearer ') ? header.slice(7) : undefined
+const ROLES = new Set<string>(Object.values(Role))
+
+// Skip the projection upsert when this exact identity was written moments ago
+const recentlySynced = new Map<string, number>()
+const SYNC_TTL_MS = 60_000
+
+/**
+ * Identity comes from the gateway (trusted x-user-* headers) or a verified bearer token.
+ * The local user row is a projection used for joins, upserted so the very first request of a
+ * new user does not race the user.registered event.
+ */
+async function identify(req: Request): Promise<boolean> {
+    await new Promise<void>((resolve) => attachUser(req as any, undefined as any, () => resolve()))
+    const u = (req as any).user as { id: string; role: string; email?: string; name?: string } | undefined
+    if (!u) return false
+    const role = (ROLES.has(u.role) ? u.role : 'STUDENT') as Role
+    const name = u.name || u.email?.split('@')[0] || 'Learner'
+    const email = u.email || `${u.id}@unknown.local`
+    const key = `${u.id}|${role}|${name}`
+    if ((recentlySynced.get(key) ?? 0) < Date.now()) {
+        await prisma.user.upsert({
+            where: { id: u.id },
+            update: { role, ...(u.name ? { name } : {}) },
+            create: { id: u.id, email, name, role },
+        })
+        if (recentlySynced.size > 5000) recentlySynced.clear()
+        recentlySynced.set(key, Date.now() + SYNC_TTL_MS)
+    }
+    req.user = { id: u.id, role, name, email }
+    return true
 }
 
-async function loadUser(token: string) {
-    const { userId } = verifyAccessToken(token)
-    // Loaded fresh so deleted users and role changes take effect immediately
-    return prisma.user.findUnique({ where: { id: userId }, select: { id: true, role: true, name: true, email: true } })
-}
-
-/** Requires a valid access token. */
+/** Requires an authenticated user. */
 export const protect = async (req: Request, _res: Response, next: NextFunction) => {
     try {
-        const token = bearer(req)
-        if (!token) return next(unauthorized('Not authorized, no token'))
-        const user = await loadUser(token)
-        if (!user) return next(unauthorized('Account no longer exists'))
-        req.user = user
+        if (!(await identify(req))) return next(unauthorized('Not authorized, no token'))
         next()
-    } catch {
-        next(unauthorized('Not authorized, token failed'))
+    } catch (e) {
+        next(e)
     }
 }
 
-/** Attaches req.user when a valid token is present, but never rejects. */
+/** Attaches req.user when credentials are present, but never rejects. */
 export const optionalAuth = async (req: Request, _res: Response, next: NextFunction) => {
     try {
-        const token = bearer(req)
-        if (token) {
-            const user = await loadUser(token)
-            if (user) req.user = user
-        }
+        await identify(req)
     } catch {
-        // Invalid or expired token: treat the request as anonymous
+        // treated as anonymous
     }
     next()
 }
