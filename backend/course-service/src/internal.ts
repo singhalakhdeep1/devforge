@@ -3,7 +3,7 @@ import { internalOnly } from '@devhub/shared'
 import { handle, intParam, notFound } from './lib/errors'
 import { prisma } from './lib/prisma'
 
-/** Endpoints other services call (payment-service, auth-service). Guarded by the internal key. */
+/** Endpoints other services call (payment-service, auth-service, search, analytics). Guarded by the internal key. */
 const router = Router()
 router.use(internalOnly)
 
@@ -13,6 +13,56 @@ router.get(
         const c = await prisma.course.findUnique({ where: { id: intParam(req.params.id) } })
         if (!c) throw notFound('Course')
         res.json({ id: c.id, title: c.title, description: c.description, price: Number(c.price), published: c.published, instructorId: c.instructorId })
+    })
+)
+
+/** Denormalised view of a course for the search index and reports. */
+router.get(
+    '/courses/:id/doc',
+    handle(async (req, res) => {
+        const id = intParam(req.params.id)
+        const c = await prisma.course.findUnique({
+            where: { id },
+            include: {
+                instructor: { select: { id: true, name: true } },
+                modules: { orderBy: { position: 'asc' }, include: { lessons: { orderBy: { position: 'asc' }, select: { title: true, type: true, durationMin: true } } } },
+                _count: { select: { enrollments: true } },
+            },
+        })
+        if (!c) throw notFound('Course')
+        const rating = await prisma.review.aggregate({ where: { courseId: id }, _avg: { rating: true }, _count: true })
+        const lessons = c.modules.flatMap((m) => m.lessons)
+        res.json({
+            id: c.id,
+            title: c.title,
+            description: c.description,
+            category: c.category,
+            level: c.level,
+            price: Number(c.price),
+            published: c.published,
+            thumbnailUrl: c.thumbnailUrl,
+            instructor: c.instructor,
+            modules: c.modules.map((m) => m.title),
+            lessons: lessons.map((l) => l.title),
+            lessonCount: lessons.length,
+            totalMinutes: lessons.reduce((s, l) => s + l.durationMin, 0),
+            students: c._count.enrollments,
+            rating: Number((rating._avg.rating ?? 0).toFixed(2)),
+            ratingCount: rating._count,
+            createdAt: c.createdAt,
+            updatedAt: c.updatedAt,
+        })
+    })
+)
+
+/** Course ids in pages, for (re)building indexes: ?after=<id>&limit=100 */
+router.get(
+    '/courses',
+    handle(async (req, res) => {
+        const after = Number(req.query.after) || 0
+        const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100))
+        const rows = await prisma.course.findMany({ where: { id: { gt: after } }, orderBy: { id: 'asc' }, take: limit, select: { id: true } })
+        res.json({ ids: rows.map((r) => r.id), next: rows.length === limit ? rows[rows.length - 1].id : null })
     })
 )
 

@@ -12,7 +12,10 @@
     "websocket-server",
     "backend/payment-service",
     "backend/editor-service",
-    "backend/file-service"
+    "backend/file-service",
+    "backend/elasticsearch-service",
+    "backend/search-service",
+    "backend/email-service"
   ],
   "scripts": {
     "build:shared": "npm run build -w @devhub/shared",

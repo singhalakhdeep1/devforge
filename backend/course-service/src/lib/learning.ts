@@ -1,7 +1,8 @@
 import { Role } from '../generated/client'
 import { prisma } from './prisma'
 import { forbidden, notFound } from './errors'
-import { notify } from './notify'
+import { TOPICS, emit } from '@devhub/shared'
+import { bus, notify } from './notify'
 
 export const QUIZ_PASS_PERCENT = 70
 
@@ -77,6 +78,7 @@ export async function completeLesson(userId: string, lessonId: number) {
 
     const progress = await getProgress(userId, courseId)
     let certificateId: string | null = null
+    emit(bus, TOPICS.lessonCompleted, 'lesson.completed', { userId, lessonId, courseId, percent: progress.percent }, userId)
 
     if (progress.totalLessons > 0 && progress.completedLessons === progress.totalLessons) {
         const enrollment = await prisma.enrollment.findUnique({ where: { userId_courseId: { userId, courseId } } })
@@ -88,6 +90,8 @@ export async function completeLesson(userId: string, lessonId: number) {
                 create: { userId, courseId },
             })
             certificateId = cert.id
+            emit(bus, TOPICS.courseCompleted, 'course.completed', { userId, courseId, courseTitle: lesson.module.course.title }, userId)
+            emit(bus, TOPICS.certificateIssued, 'certificate.issued', { userId, courseId, certificateId: cert.id, courseTitle: lesson.module.course.title }, userId)
             await notify({
                 userId,
                 type: 'certificate',

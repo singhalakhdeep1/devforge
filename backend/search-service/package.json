@@ -1,33 +1,25 @@
 {
-    "name": "@devhub/search-service",
-    "version": "1.0.0",
-    "description": "Elasticsearch-powered advanced search service",
-    "scripts": {
-        "dev": "tsx watch src/index.ts",
-        "build": "tsc",
-        "start": "node dist/index.js",
-        "test": "jest",
-        "index:rebuild": "tsx src/scripts/rebuildIndex.ts"
-    },
-    "dependencies": {
-        "@devhub/shared": "*",
-        "@elastic/elasticsearch": "^8.11.0",
-        "express": "^4.18.2",
-        "redis": "^4.6.12",
-        "dotenv": "^16.3.1",
-        "winston": "^3.11.0",
-        "cors": "^2.8.5",
-        "helmet": "^7.1.0",
-        "natural": "^6.10.4",
-        "stopword": "^2.0.8"
-    },
-    "devDependencies": {
-        "@types/express": "^4.17.21",
-        "@types/cors": "^2.8.17",
-        "@types/node": "^20.10.6",
-        "@types/natural": "^5.1.5",
-        "tsx": "^4.7.0",
-        "typescript": "^5.3.3",
-        "jest": "^29.7.0"
-    }
+  "name": "@devhub/search-service",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Full-text search over courses, instructors and projects on Elasticsearch, kept current from domain events",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@devhub/elasticsearch-service": "*",
+    "@devhub/shared": "*",
+    "express": "^4.21.2",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.17.14",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
 }

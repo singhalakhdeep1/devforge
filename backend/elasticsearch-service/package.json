@@ -1,0 +1,26 @@
+{
+  "name": "@devhub/elasticsearch-service",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Elasticsearch client library (versioned indices, aliases, zero-downtime reindex) and an admin operations API",
+  "main": "dist/lib.js",
+  "types": "dist/lib.d.ts",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@devhub/shared": "*",
+    "@elastic/elasticsearch": "^8.17.0",
+    "express": "^4.21.2",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.17.14",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}

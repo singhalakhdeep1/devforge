@@ -19,10 +19,6 @@ async function startConsumers() {
         await createNotification({ userId: data.id, type: 'system', title: 'Welcome to DevForge', body: 'Browse the catalogue and start your first course.', link: '/courses' })
     })
 
-    await bus.subscribe(TOPICS.certificateIssued, GROUP, async ({ data }) => {
-        await createNotification({ userId: data.userId, type: 'certificate', title: 'Certificate earned', body: data.courseTitle ? `You completed ${data.courseTitle}` : undefined, link: '/certificates' })
-    })
-
     // The account is gone: its notifications go too
     await bus.subscribe(TOPICS.userDeleted, GROUP, async ({ data }) => {
         await Notification.deleteMany({ userId: data.id })

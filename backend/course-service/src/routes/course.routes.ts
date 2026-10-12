@@ -1,10 +1,10 @@
 import { Router } from 'express'
 import { Level, Prisma } from '../generated/client'
 import { z } from 'zod'
-import { createServiceClient } from '@devhub/shared'
+import { TOPICS, createServiceClient, emit } from '@devhub/shared'
 import { badRequest, forbidden, handle, intParam, notFound } from '../lib/errors'
 import { getProgress } from '../lib/learning'
-import { notify } from '../lib/notify'
+import { bus, notify } from '../lib/notify'
 import { prisma } from '../lib/prisma'
 import { optionalAuth, protect } from '../middleware/auth'
 import { validate } from '../middleware/validate'
@@ -170,6 +170,7 @@ router.post(
         if (existing) return res.json({ enrolled: true, alreadyEnrolled: true })
 
         await prisma.enrollment.create({ data: { userId: req.user.id, courseId } })
+        emit(bus, TOPICS.courseEnrolled, 'course.enrolled', { userId: req.user.id, courseId, paid: false }, req.user.id)
         await notify({ userId: course.instructorId, type: 'enrollment', title: 'New student', body: `${req.user.name} enrolled in ${course.title}`, link: `/instructor/courses/${courseId}` })
         res.status(201).json({ enrolled: true })
     })

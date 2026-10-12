@@ -38,6 +38,8 @@ export const routes: Route[] = [
   { prefix: '/api/files', service: 'file', auth: 'required' },
   { prefix: '/uploads', service: 'file' },
 
+  { prefix: '/api/admin/email', service: 'email', auth: 'required' },
+  { prefix: '/api/admin/search-engine', service: 'elasticsearch', auth: 'required' },
   { prefix: '/api/search', service: 'search', auth: 'optional' },
   { prefix: '/api/analytics', service: 'analytics', auth: 'optional' },
   { prefix: '/api/projects', service: 'project', auth: 'optional' },
@@ -56,5 +58,5 @@ export const match = (path: string): Route | undefined =>
   routes.find((r) => path === r.prefix || path.startsWith(r.prefix + '/') || path.startsWith(r.prefix + '?'))
 
 /** Services whose /health the gateway aggregates. */
-export const monitored: ServiceName[] = ['auth', 'course', 'payment', 'notification', 'websocket', 'editor', 'file', 'search', 'analytics', 'project', 'kanban', 'video', 'email', 'audit', 'reporting', 'graphql', 'trpc']
+export const monitored: ServiceName[] = ['auth', 'course', 'payment', 'notification', 'websocket', 'editor', 'file', 'search', 'elasticsearch', 'analytics', 'project', 'kanban', 'video', 'email', 'audit', 'reporting', 'graphql', 'trpc']
 export const targetOf = (service: ServiceName) => serviceUrl(service)

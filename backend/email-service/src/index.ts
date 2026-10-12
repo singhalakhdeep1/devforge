@@ -1,99 +1,88 @@
-import express from 'express';
-import { Queue, Worker } from 'bullmq';
-import sgMail from '@sendgrid/mail';
-import dotenv from 'dotenv';
-import { logger } from './config/logger';
+import { Router } from 'express'
+import { z } from 'zod'
+import { AppError, TOPICS, asyncHandler, createEventBus, createLogger, env, getRedis, redisHealthy, requireRole, startService, validate } from '@devhub/shared'
+import { closeQueue, emailQueue, enqueue, isTemplate, startWorker } from './queue'
+import { SAMPLE, TEMPLATES, render } from './templates'
+import { OUTBOX_KEY, transportFor } from './transport'
 
-dotenv.config();
+const log = createLogger('email')
+const GROUP = 'email-service'
 
-const app = express();
-const PORT = process.env.EMAIL_SERVICE_PORT || 4003;
+async function startConsumers() {
+  const bus = createEventBus('email')
 
-sgMail.setApiKey(process.env.SENDGRID_API_KEY || '');
+  // auth-service (and anyone else) asks for an email by template name
+  await bus.subscribe(TOPICS.emailRequested, GROUP, async (event) => {
+    const { to, template, name, url, data } = event.data as { to: string; template: string; name?: string; url?: string; data?: Record<string, unknown> }
+    if (!isTemplate(template)) return log.logWarning('unknown email template ignored', { template })
+    await enqueue({ to, template, data: { name, url, ...data } }, event.id)
+  })
 
-// BullMQ setup
-const emailQueue = new Queue('email', {
-    connection: {
-        host: process.env.REDIS_HOST || 'localhost',
-        port: parseInt(process.env.REDIS_PORT || '6379'),
-    },
-});
+  // a receipt for every successful payment
+  await bus.subscribe(TOPICS.paymentSucceeded, GROUP, async (event) => {
+    const p = event.data as { email?: string; name?: string; orderId: string; amount: number; currency?: string; courseId: number }
+    if (p.email) await enqueue({ to: p.email, template: 'receipt', data: { name: p.name, amount: p.amount, currency: p.currency, orderId: p.orderId, courseId: p.courseId } }, `receipt-${p.orderId}`)
+  })
+  log.logInformation('email consumers started')
+}
 
-// Email worker
-const emailWorker = new Worker('email', async (job) => {
-    const { to, subject, html, template, data } = job.data;
+const admin = Router()
+admin.use(requireRole('ADMIN'))
 
-    logger.info(`Processing email job ${job.id} for ${to}`);
+admin.get('/queue', asyncHandler(async (_req, res) => {
+  res.json({ transport: transportFor().kind, counts: await emailQueue().getJobCounts('waiting', 'active', 'completed', 'failed', 'delayed') })
+}))
 
-    try {
-        const msg = {
-            to,
-            from: process.env.EMAIL_FROM || 'noreply@devhub.com',
-            subject,
-            html: html || generateTemplate(template, data),
-        };
+admin.get('/failed', asyncHandler(async (_req, res) => {
+  const jobs = await emailQueue().getFailed(0, 49)
+  res.json(jobs.map((j) => ({ id: j.id, to: j.data.to, template: j.data.template, attempts: j.attemptsMade, reason: j.failedReason, at: j.finishedOn })))
+}))
 
-        if (process.env.SENDGRID_API_KEY) {
-            await sgMail.send(msg);
-            logger.info(`Email sent successfully to ${to}`);
-        } else {
-            logger.warn(`Email not sent (no API key): ${to}`);
-        }
+admin.post('/failed/:id/retry', asyncHandler(async (req, res) => {
+  const job = await emailQueue().getJob(req.params.id)
+  if (!job) throw AppError.notFound('Job not found')
+  await job.retry()
+  res.json({ message: 'Retrying' })
+}))
 
-        return { success: true };
-    } catch (error) {
-        logger.error(`Failed to send email: ${error}`);
-        throw error;
-    }
-}, {
-    connection: {
-        host: process.env.REDIS_HOST || 'localhost',
-        port: parseInt(process.env.REDIS_PORT || '6379'),
-    },
-    concurrency: 5,
-});
+admin.get('/templates', (_req, res) => res.json({ templates: TEMPLATES }))
 
-// Template generator
-const generateTemplate = (template: string, data: any): string => {
-    const templates: Record<string, string> = {
-        WELCOME: `
-      <h1>Welcome to DevHub, ${data.name}!</h1>
-      <p>Thank you for joining our platform.</p>
-    `,
-        PASSWORD_RESET: `
-      <h1>Password Reset Request</h1>
-      <p>Click the link below to reset your password:</p>
-      <a href="${data.resetLink}">Reset Password</a>
-    `,
-        EMAIL_VERIFICATION: `
-      <h1>Verify Your Email</h1>
-      <p>Click the link below to verify your email:</p>
-      <a href="${data.verifyLink}">Verify Email</a>
-    `,
-    };
+admin.get('/preview/:template', (req, res) => {
+  if (!isTemplate(req.params.template)) throw AppError.notFound('Unknown template')
+  const r = render(req.params.template, SAMPLE[req.params.template])
+  if (req.query.format === 'json') return res.json(r)
+  res.type('html').send(r.html)
+})
 
-    return templates[template] || '<p>Email content</p>';
-};
+admin.post('/send-test', validate(z.object({ to: z.string().email(), template: z.enum(['welcome', 'verify', 'reset', 'receipt']).default('welcome') })), asyncHandler(async (req, res) => {
+  const job = await enqueue({ to: req.body.to, template: req.body.template, data: SAMPLE[req.body.template as keyof typeof SAMPLE] })
+  res.status(202).json({ queued: Boolean(job), jobId: job?.id })
+}))
 
-// Middleware
-app.use(express.json());
+// Without a provider the messages land here so a developer can click the links
+admin.get('/outbox', asyncHandler(async (_req, res) => {
+  if (transportFor().kind !== 'log') throw AppError.notFound('A real email provider is configured; there is no dev outbox')
+  res.json((await getRedis().lrange(OUTBOX_KEY, 0, 49)).map((m) => JSON.parse(m)))
+}))
 
-// Routes
-app.post('/api/v1/email/send', async (req, res) => {
-    try {
-        const job = await emailQueue.add('send-email', req.body);
-        res.json({ success: true, jobId: job.id });
-    } catch (error) {
-        res.status(500).json({ success: false, error: 'Failed to queue email' });
-    }
-});
-
-app.get('/health', (req, res) => {
-    res.json({ status: 'healthy', service: 'email-service' });
-});
-
-app.listen(PORT, () => {
-    logger.info(`📧 Email Service running on port ${PORT}`);
-});
-
-export default app;
+void startService({
+  name: 'email',
+  trustProxy: true,
+  cors: false,
+  routes: (app) => {
+    app.use('/api/admin/email', admin)
+  },
+  ready: { redis: () => redisHealthy() },
+  onStart: async () => {
+    startWorker()
+    await startConsumers()
+    log.logInformation(`email transport: ${transportFor().kind}${env('EMAIL_FROM') ? '' : ' (set EMAIL_FROM)'}`)
+  },
+  onStop: async () => {
+    await closeQueue()
+    await createEventBus('email').close()
+  },
+}).catch((e) => {
+  console.error('email-service failed to start', e)
+  process.exit(1)
+})

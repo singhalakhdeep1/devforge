@@ -466,6 +466,23 @@ internalRouter.use(internalOnly);
 
 const brief = (u: User) => ({ id: u.id, name: u.name, avatar: u.avatar, role: u.role, email: u.email, isVerified: u.isVerified });
 
+/** Everything safe to show on a public profile or put in a search index (no email, no credentials). */
+const publicProfile = (u: User) => ({ id: u.id, name: u.name, avatar: u.avatar, role: u.role, bio: u.bio, skills: u.skills, location: u.location, createdAt: u.createdAt });
+
+internalRouter.get('/users/:id/public', asyncHandler(async (req, res) => {
+  const u = await prisma.user.findUnique({ where: { id: req.params.id } });
+  if (!u || !u.isActive) throw AppError.notFound('User not found');
+  res.json(publicProfile(u));
+}));
+
+/** Pages of public profiles by id, for building search indexes: ?after=<id>&limit=200 */
+internalRouter.get('/users', asyncHandler(async (req, res) => {
+  const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 200));
+  const after = String(req.query.after ?? '');
+  const rows = await prisma.user.findMany({ where: { isActive: true, ...(after ? { id: { gt: after } } : {}) }, orderBy: { id: 'asc' }, take: limit });
+  res.json({ users: rows.map(publicProfile), next: rows.length === limit ? rows[rows.length - 1].id : null });
+}));
+
 internalRouter.get('/users/:id', asyncHandler(async (req, res) => {
   const u = await prisma.user.findUnique({ where: { id: req.params.id } });
   if (!u) throw AppError.notFound('User not found');

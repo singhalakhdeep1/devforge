@@ -44,6 +44,7 @@ export const SERVICE_PORTS = {
   graphql: 4020,
   grpc: 4021,
   trpc: 4022,
+  elasticsearch: 4018,
   kafka: 4023,
 } as const;
 

@@ -1,77 +1,42 @@
-import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import dotenv from 'dotenv';
-import searchRoutes from './routes/search.routes';
-import { logger } from './config/logger';
-import { initializeIndices, checkElasticsearchHealth } from './config/elasticsearch';
+import { esHealthy, ensureIndices } from '@devhub/elasticsearch-service'
+import { createEventBus, createLogger, redisHealthy, startService } from '@devhub/shared'
+import { backfillIfEmpty, startIndexing } from './indexer'
+import router from './routes'
 
-dotenv.config();
+const log = createLogger('search')
 
-const app = express();
-const PORT = process.env.PORT || 3007;
-
-// Middleware
-app.use(helmet());
-app.use(cors());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// Request logging
-app.use((req, res, next) => {
-    logger.info(`${req.method} ${req.path}`);
-    next();
-});
-
-// Routes
-app.use('/api/search', searchRoutes);
-
-// Health check
-app.get('/health', async (req, res) => {
-    const esHealthy = await checkElasticsearchHealth();
-    res.json({
-        status: esHealthy ? 'healthy' : 'degraded',
-        service: 'search-service',
-        elasticsearch: esHealthy ? 'connected' : 'disconnected',
-        timestamp: new Date().toISOString()
-    });
-});
-
-// Error handling
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-    logger.error('Unhandled error:', err);
-    res.status(500).json({
-        success: false,
-        error: 'Internal server error'
-    });
-});
-
-// Initialize and start server
-async function startServer() {
+/** Elasticsearch may still be starting when this service does: keep trying instead of crashing. */
+async function connectWithRetry() {
+  for (let attempt = 1; ; attempt++) {
     try {
-        // Initialize Elasticsearch indices
-        await initializeIndices();
-        logger.info('Elasticsearch indices initialized');
-
-        // Start server
-        app.listen(PORT, () => {
-            logger.info(`Search service running on port ${PORT}`);
-        });
-    } catch (error) {
-        logger.error('Failed to start server:', error);
-        process.exit(1);
+      await ensureIndices()
+      return
+    } catch (e) {
+      log.logWarning('Elasticsearch not ready yet', { attempt, error: String(e).slice(0, 160) })
+      await new Promise((r) => setTimeout(r, Math.min(15_000, attempt * 2000)))
     }
+  }
 }
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-    logger.info('SIGTERM received, shutting down gracefully');
-    process.exit(0);
-});
-
-process.on('SIGINT', () => {
-    logger.info('SIGINT received, shutting down gracefully');
-    process.exit(0);
-});
-
-startServer();
+void startService({
+  name: 'search',
+  trustProxy: true,
+  cors: false,
+  routes: (app) => {
+    app.use('/api/search', router)
+  },
+  ready: { elasticsearch: () => esHealthy(), redis: () => redisHealthy() },
+  onStart: () => {
+    // do not block the HTTP server on the search cluster: /ready reports it while it comes up
+    void connectWithRetry()
+      .then(startIndexing)
+      .then(backfillIfEmpty)
+      .catch((e) => log.logError('search startup failed', String(e)))
+  },
+  onStop: async () => {
+    await createEventBus('search').close()
+  },
+}).catch((e) => {
+  console.error('search-service failed to start', e)
+  process.exit(1)
+})
