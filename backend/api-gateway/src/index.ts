@@ -40,7 +40,7 @@ function proxyFor(route: Route): Proxy {
       target: serviceUrl(route.service),
       changeOrigin: true,
       xfwd: true,
-      ws: route.service === 'websocket',
+      ws: Boolean(route.ws),
       proxyTimeout: 30_000,
       timeout: 35_000,
       ...(route.rewrite ? { pathRewrite: (path: string) => route.rewrite!(path) } : {}),
@@ -144,10 +144,10 @@ void startService({
   },
   routes: () => undefined,
   onStart: (server) => {
-    // WebSocket upgrades for Socket.IO go to the websocket-server
-    const wsRoute = routes.find((r) => r.service === 'websocket')!
+    // WebSocket upgrades (Socket.IO, Yjs documents) are proxied to the service that owns the route
     server.on('upgrade', (req, socket, head) => {
-      if (req.url?.startsWith('/socket.io')) proxyFor(wsRoute).upgrade?.(req, socket, head)
+      const route = req.url ? match(new URL(req.url, 'http://x').pathname) : undefined
+      if (route?.ws && breaker(route.service).allow()) proxyFor(route).upgrade?.(req, socket, head)
       else socket.destroy()
     })
   },

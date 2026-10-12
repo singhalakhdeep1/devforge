@@ -8,8 +8,8 @@ export interface Route {
   rewrite?: (path: string) => string
   /** Routes that must carry a verified identity are rejected at the edge without one. */
   auth?: 'required' | 'optional'
-  /** Requests per refill window for this route group, if tighter than the default. */
-  capacity?: number
+  /** Also accept WebSocket upgrades on this prefix. */
+  ws?: boolean
 }
 
 /**
@@ -33,6 +33,7 @@ export const routes: Route[] = [
   { prefix: '/api/payments', service: 'payment', auth: 'required' },
 
   { prefix: '/api/notifications', service: 'notification', auth: 'required' },
+  { prefix: '/ws/editor', service: 'editor', ws: true }, // Yjs documents; the editor-service verifies the token itself
   { prefix: '/api/editor', service: 'editor', auth: 'required' },
   { prefix: '/api/files', service: 'file', auth: 'required' },
   { prefix: '/uploads', service: 'file' },
@@ -46,7 +47,7 @@ export const routes: Route[] = [
   { prefix: '/api/video', service: 'video', auth: 'required' },
   { prefix: '/api/reports', service: 'reporting', auth: 'required' },
   { prefix: '/api/audit', service: 'audit', auth: 'required' },
-  { prefix: '/socket.io', service: 'websocket' }, // Socket.IO authenticates in its own handshake
+  { prefix: '/socket.io', service: 'websocket', ws: true }, // Socket.IO authenticates in its own handshake
   { prefix: '/graphql', service: 'graphql', auth: 'optional' },
   { prefix: '/trpc', service: 'trpc', auth: 'optional' },
 ]

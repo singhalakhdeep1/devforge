@@ -469,6 +469,12 @@ internalRouter.get('/users/:id', asyncHandler(async (req, res) => {
   res.json(brief(u));
 }));
 
+internalRouter.get('/users/by-email/:email', asyncHandler(async (req, res) => {
+  const u = await prisma.user.findUnique({ where: { email: req.params.email.toLowerCase() } });
+  if (!u) throw AppError.notFound('User not found');
+  res.json(brief(u));
+}));
+
 internalRouter.post('/users/lookup', validate(z.object({ ids: z.array(z.string()).max(200) })), asyncHandler(async (req, res) => {
   const users = await prisma.user.findMany({ where: { id: { in: req.body.ids } } });
   res.json(users.map(brief));

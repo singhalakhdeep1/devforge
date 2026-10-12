@@ -1,0 +1,82 @@
+// Editor data: collaborative documents (Yjs state), members, snapshots, personal code snippets.
+// Lives in its own Postgres schema ("editor").
+
+generator client {
+  provider      = "prisma-client-js"
+  output        = "../src/generated/client"
+  binaryTargets = ["native", "debian-openssl-3.0.x", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("EDITOR_DATABASE_URL")
+}
+
+enum Visibility {
+  PRIVATE
+  LINK_VIEW
+  LINK_EDIT
+}
+
+enum MemberRole {
+  EDITOR
+  VIEWER
+}
+
+model Document {
+  id         String     @id @default(uuid())
+  title      String
+  language   String     @default("javascript")
+  ownerId    String
+  visibility Visibility @default(PRIVATE)
+  /// Y.encodeStateAsUpdate of the live document
+  state      Bytes?
+  /// length of the text, for listings without loading the state
+  length     Int        @default(0)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  members   DocumentMember[]
+  snapshots Snapshot[]
+
+  @@index([ownerId])
+}
+
+model DocumentMember {
+  documentId String
+  userId     String
+  role       MemberRole @default(EDITOR)
+  addedAt    DateTime   @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@id([documentId, userId])
+  @@index([userId])
+}
+
+model Snapshot {
+  id         String   @id @default(uuid())
+  documentId String
+  name       String
+  text       String
+  state      Bytes
+  createdBy  String
+  createdAt  DateTime @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, createdAt])
+}
+
+model Snippet {
+  id          Int      @id @default(autoincrement())
+  userId      String
+  title       String
+  code        String
+  language    String
+  description String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+}

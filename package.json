@@ -10,7 +10,8 @@
     "backend/api-gateway",
     "backend/notification-service",
     "websocket-server",
-    "backend/payment-service"
+    "backend/payment-service",
+    "backend/editor-service"
   ],
   "scripts": {
     "build:shared": "npm run build -w @devhub/shared",
