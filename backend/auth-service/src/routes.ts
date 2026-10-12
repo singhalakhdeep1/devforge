@@ -469,6 +469,23 @@ const brief = (u: User) => ({ id: u.id, name: u.name, avatar: u.avatar, role: u.
 /** Everything safe to show on a public profile or put in a search index (no email, no credentials). */
 const publicProfile = (u: User) => ({ id: u.id, name: u.name, avatar: u.avatar, role: u.role, bio: u.bio, skills: u.skills, location: u.location, createdAt: u.createdAt });
 
+/** Aggregates for the reporting-service: counts only, no personal data. */
+internalRouter.get('/stats', asyncHandler(async (req, res) => {
+  const days = Math.min(365, Math.max(1, Number(req.query.days) || 30));
+  const since = new Date(Date.now() - days * 86_400_000);
+  const [total, active, verified, twoFactor, byRole, newUsers, signups, activeRecent] = await Promise.all([
+    prisma.user.count(),
+    prisma.user.count({ where: { isActive: true } }),
+    prisma.user.count({ where: { isVerified: true } }),
+    prisma.user.count({ where: { twoFactorEnabled: true } }),
+    prisma.user.groupBy({ by: ['role'], _count: true }),
+    prisma.user.count({ where: { createdAt: { gte: since } } }),
+    prisma.$queryRaw<{ day: Date; n: bigint }[]>`SELECT date_trunc('day', "createdAt") AS day, count(*) AS n FROM "User" WHERE "createdAt" >= ${since} GROUP BY 1 ORDER BY 1`,
+    prisma.user.count({ where: { lastLoginAt: { gte: since } } }),
+  ]);
+  res.json({ days, total, active, verified, twoFactor, newUsers, activeInPeriod: activeRecent, byRole: Object.fromEntries(byRole.map((r) => [r.role, r._count])), signupsPerDay: signups.map((s) => ({ day: s.day.toISOString().slice(0, 10), count: Number(s.n) })) });
+}));
+
 internalRouter.get('/users/:id/public', asyncHandler(async (req, res) => {
   const u = await prisma.user.findUnique({ where: { id: req.params.id } });
   if (!u || !u.isActive) throw AppError.notFound('User not found');

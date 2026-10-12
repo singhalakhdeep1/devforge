@@ -6,8 +6,8 @@ import { env } from '@devhub/shared'
 const FRONTEND = env('FRONTEND_URL', 'http://localhost:3000').replace(/\/$/, '')
 const BRAND = env('EMAIL_BRAND', 'DevForge')
 
-export type TemplateName = 'welcome' | 'verify' | 'reset' | 'receipt' | 'invite' | 'alert'
-export const TEMPLATES: TemplateName[] = ['welcome', 'verify', 'reset', 'receipt', 'invite', 'alert']
+export type TemplateName = 'welcome' | 'verify' | 'reset' | 'receipt' | 'invite' | 'alert' | 'report'
+export const TEMPLATES: TemplateName[] = ['welcome', 'verify', 'reset', 'receipt', 'invite', 'alert', 'report']
 
 export interface Rendered {
   subject: string
@@ -84,6 +84,12 @@ export function render(template: TemplateName, d: Record<string, unknown>): Rend
         text: `${resolved ? 'RESOLVED' : 'FIRING'} (${d.severity}): ${d.message}\nSubject: ${d.subject}\n${FRONTEND}/admin/monitoring\n`,
       }
     }
+    case 'report':
+      return {
+        subject: `Your ${d.title || 'scheduled'} report is ready`,
+        html: wrap('Your report is ready', `<p>Hi ${name}, the <strong>${esc(d.title)}</strong> report for the last ${esc(d.days)} days has been generated (<code>${esc(d.filename)}</code>). Sign in to download it.</p>`, { url: String(d.url), action: 'Open reports' }),
+        text: `Your ${d.title} report (last ${d.days} days) is ready: ${d.filename}\nDownload it after signing in: ${d.url}\n`,
+      }
     case 'receipt': {
       const total = money(d.amount, String(d.currency || 'usd'))
       return {
@@ -103,5 +109,6 @@ export const SAMPLE: Record<TemplateName, Record<string, unknown>> = {
   reset: { name: 'Sam', url: `${FRONTEND}/reset-password/sample-token` },
   invite: { name: 'Sam', inviterName: 'Alicia', entityName: 'Compiler Club', kind: 'project', role: 'MEMBER', url: `${FRONTEND}/invitations/sample-token` },
   alert: { severity: 'critical', state: 'firing', message: 'search is not responding', subject: 'search' },
+  report: { name: 'Sam', title: 'Revenue', days: 30, filename: 'devforge-revenue-30d.pdf', url: `${FRONTEND}/reports` },
   receipt: { name: 'Sam', amount: 49, currency: 'usd', courseTitle: 'Build REST APIs with Node and Express', courseId: 2, orderId: 'sample-order' },
 }

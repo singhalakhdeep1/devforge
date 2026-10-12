@@ -44,6 +44,27 @@ internal.get('/boards/:id/access/:userId', asyncHandler(async (req, res) => {
   res.json({ canRead: a.read, canWrite: a.write, canAdmin: a.admin })
 }))
 
+internal.get('/stats', asyncHandler(async (req, res) => {
+  const days = Math.min(365, Math.max(1, Number(req.query.days) || 30))
+  const since = new Date(Date.now() - days * 86_400_000)
+  const [boards, byStatus, created, completed, overdue, hours, perDayCreated, perDayDone, sprints] = await Promise.all([
+    prisma.board.count({ where: { archived: false } }),
+    prisma.task.groupBy({ by: ['status'], _count: true }),
+    prisma.task.count({ where: { createdAt: { gte: since } } }),
+    prisma.task.count({ where: { completedAt: { gte: since } } }),
+    prisma.task.count({ where: { dueDate: { lt: new Date() }, status: { not: 'DONE' } } }),
+    prisma.timeEntry.aggregate({ where: { date: { gte: since } }, _sum: { hours: true } }),
+    prisma.$queryRaw<{ day: Date; n: bigint }[]>`SELECT date_trunc('day', "createdAt") AS day, count(*) AS n FROM "Task" WHERE "createdAt" >= ${since} GROUP BY 1 ORDER BY 1`,
+    prisma.$queryRaw<{ day: Date; n: bigint }[]>`SELECT date_trunc('day', "completedAt") AS day, count(*) AS n FROM "Task" WHERE "completedAt" >= ${since} GROUP BY 1 ORDER BY 1`,
+    prisma.sprint.count({ where: { status: 'COMPLETED', completedAt: { gte: since } } }),
+  ])
+  res.json({
+    days, boards, tasksByStatus: Object.fromEntries(byStatus.map((s) => [s.status, s._count])), created, completed, overdue, hoursLogged: Number((hours._sum.hours ?? 0).toFixed(1)), sprintsCompleted: sprints,
+    createdPerDay: perDayCreated.map((d) => ({ day: d.day.toISOString().slice(0, 10), count: Number(d.n) })),
+    completedPerDay: perDayDone.map((d) => ({ day: d.day.toISOString().slice(0, 10), count: Number(d.n) })),
+  })
+}))
+
 void startService({
   name: 'kanban',
   trustProxy: true,

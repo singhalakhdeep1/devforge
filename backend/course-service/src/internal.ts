@@ -74,6 +74,53 @@ router.get(
     })
 )
 
+/** Aggregates for the reporting-service. */
+router.get(
+    '/stats',
+    handle(async (req, res) => {
+        const days = Math.min(365, Math.max(1, Number(req.query.days) || 30))
+        const since = new Date(Date.now() - days * 86_400_000)
+        const [published, drafts, enrollments, newEnrollments, completions, byCategory, perDay, rating, top, revenue] = await Promise.all([
+            prisma.course.count({ where: { published: true } }),
+            prisma.course.count({ where: { published: false } }),
+            prisma.enrollment.count(),
+            prisma.enrollment.count({ where: { enrolledAt: { gte: since } } }),
+            prisma.enrollment.count({ where: { completedAt: { gte: since } } }),
+            prisma.course.groupBy({ by: ['category'], where: { published: true }, _count: true }),
+            prisma.$queryRaw<{ day: Date; n: bigint }[]>`SELECT date_trunc('day', "enrolledAt") AS day, count(*) AS n FROM enrollments WHERE "enrolledAt" >= ${since} GROUP BY 1 ORDER BY 1`,
+            prisma.review.aggregate({ _avg: { rating: true }, _count: true }),
+            prisma.course.findMany({ where: { published: true }, orderBy: { enrollments: { _count: 'desc' } }, take: 10, select: { id: true, title: true, category: true, price: true, _count: { select: { enrollments: true, reviews: true } } } }),
+            prisma.coursePayment.groupBy({ by: ['courseId'], where: { paidAt: { gte: since } }, _sum: { amount: true }, _count: true }),
+        ])
+        res.json({
+            days, published, drafts, enrollments, newEnrollments, completions,
+            completionRate: newEnrollments ? Number(((completions / newEnrollments) * 100).toFixed(1)) : null,
+            averageRating: Number((rating._avg.rating ?? 0).toFixed(2)), reviews: rating._count,
+            byCategory: byCategory.map((c) => ({ category: c.category, courses: c._count })),
+            enrollmentsPerDay: perDay.map((d) => ({ day: d.day.toISOString().slice(0, 10), count: Number(d.n) })),
+            topCourses: top.map((c) => ({ id: c.id, title: c.title, category: c.category, price: Number(c.price), enrollments: c._count.enrollments, reviews: c._count.reviews, revenue: Number(revenue.find((r) => r.courseId === c.id)?._sum.amount ?? 0) })),
+            revenueInPeriod: Number(revenue.reduce((n, r) => n + Number(r._sum.amount ?? 0), 0).toFixed(2)),
+        })
+    })
+)
+
+router.get(
+    '/instructors/:id/report',
+    handle(async (req, res) => {
+        const days = Math.min(365, Math.max(1, Number(req.query.days) || 30))
+        const since = new Date(Date.now() - days * 86_400_000)
+        const courses = await prisma.course.findMany({ where: { instructorId: req.params.id }, select: { id: true, title: true, published: true, price: true, _count: { select: { enrollments: true, reviews: true } } } })
+        const ids = courses.map((c) => c.id)
+        const [recent, done, pay, ratings] = await Promise.all([
+            prisma.enrollment.groupBy({ by: ['courseId'], where: { courseId: { in: ids }, enrolledAt: { gte: since } }, _count: true }),
+            prisma.enrollment.groupBy({ by: ['courseId'], where: { courseId: { in: ids }, completedAt: { gte: since } }, _count: true }),
+            prisma.coursePayment.groupBy({ by: ['courseId'], where: { courseId: { in: ids }, paidAt: { gte: since } }, _sum: { amount: true } }),
+            prisma.review.groupBy({ by: ['courseId'], where: { courseId: { in: ids } }, _avg: { rating: true } }),
+        ])
+        res.json({ days, courses: courses.map((c) => ({ id: c.id, title: c.title, published: c.published, price: Number(c.price), students: c._count.enrollments, reviews: c._count.reviews, rating: Number((ratings.find((r) => r.courseId === c.id)?._avg.rating ?? 0).toFixed(2)), newEnrollments: recent.find((r) => r.courseId === c.id)?._count ?? 0, completions: done.find((r) => r.courseId === c.id)?._count ?? 0, revenue: Number(pay.find((r) => r.courseId === c.id)?._sum.amount ?? 0) })) })
+    })
+)
+
 router.get(
     '/enrollments/:userId/:courseId',
     handle(async (req, res) => {

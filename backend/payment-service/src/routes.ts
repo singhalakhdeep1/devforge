@@ -230,6 +230,33 @@ router.get(
 
 export const internalRouter = Router()
 internalRouter.use(internalOnly)
+/** Aggregates for the reporting-service. */
+internalRouter.get(
+  '/stats',
+  asyncHandler(async (req, res) => {
+    const days = Math.min(365, Math.max(1, Number(req.query.days) || 30))
+    const since = new Date(Date.now() - days * 86_400_000)
+    const [paid, refunded, perDay, byCourse, subs, byStatus] = await Promise.all([
+      prisma.order.aggregate({ where: { status: 'PAID', paidAt: { gte: since } }, _sum: { amountCents: true }, _count: true }),
+      prisma.order.aggregate({ where: { status: 'REFUNDED', refundedAt: { gte: since } }, _sum: { refundedCents: true }, _count: true }),
+      prisma.$queryRaw<{ day: Date; cents: bigint; n: bigint }[]>`SELECT date_trunc('day', "paidAt") AS day, sum("amountCents") AS cents, count(*) AS n FROM "Order" WHERE "paidAt" >= ${since} AND status IN ('PAID','REFUNDED') GROUP BY 1 ORDER BY 1`,
+      prisma.order.groupBy({ by: ['courseId', 'courseTitle'], where: { status: 'PAID', paidAt: { gte: since } }, _sum: { amountCents: true }, _count: true, orderBy: { _sum: { amountCents: 'desc' } }, take: 10 }),
+      prisma.subscription.groupBy({ by: ['plan', 'status'], _count: true }),
+      prisma.order.groupBy({ by: ['status'], _count: true }),
+    ])
+    res.json({
+      days,
+      paidOrders: paid._count, revenue: (paid._sum.amountCents ?? 0) / 100,
+      refundedOrders: refunded._count, refunded: (refunded._sum.refundedCents ?? 0) / 100,
+      net: ((paid._sum.amountCents ?? 0) - (refunded._sum.refundedCents ?? 0)) / 100,
+      revenuePerDay: perDay.map((d) => ({ day: d.day.toISOString().slice(0, 10), revenue: Number(d.cents) / 100, orders: Number(d.n) })),
+      topCourses: byCourse.map((c) => ({ courseId: c.courseId, title: c.courseTitle, orders: c._count, revenue: (c._sum.amountCents ?? 0) / 100 })),
+      subscriptions: subs.map((s) => ({ plan: s.plan, status: s.status, count: s._count })),
+      ordersByStatus: Object.fromEntries(byStatus.map((s) => [s.status, s._count])),
+    })
+  })
+)
+
 internalRouter.get(
   '/subscriptions/:userId',
   asyncHandler(async (req, res) => {

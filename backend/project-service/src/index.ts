@@ -65,6 +65,28 @@ internal.get('/projects/:id/access/:userId', asyncHandler(async (req, res) => {
   res.json({ projectId: project.id, name: project.name, role, canRead: project.visibility === 'PUBLIC' || role !== null, canWrite: atLeast(role, 'MEMBER'), canAdmin: atLeast(role, 'ADMIN'), ownerId: project.ownerId })
 }))
 
+internal.get('/stats', asyncHandler(async (req, res) => {
+  const days = Math.min(365, Math.max(1, Number(req.query.days) || 30))
+  const since = new Date(Date.now() - days * 86_400_000)
+  const [byVisibility, archived, newProjects, teams, comments, stars, top, tags, perDay] = await Promise.all([
+    prisma.project.groupBy({ by: ['visibility'], _count: true }),
+    prisma.project.count({ where: { status: 'ARCHIVED' } }),
+    prisma.project.count({ where: { createdAt: { gte: since } } }),
+    prisma.team.count(),
+    prisma.comment.count({ where: { createdAt: { gte: since } } }),
+    prisma.like.count({ where: { createdAt: { gte: since } } }),
+    prisma.project.findMany({ where: { visibility: 'PUBLIC', status: 'ACTIVE' }, orderBy: { likes: { _count: 'desc' } }, take: 10, select: { id: true, name: true, slug: true, _count: { select: { likes: true, comments: true, members: true } } } }),
+    prisma.$queryRaw<{ tag: string; n: bigint }[]>`SELECT unnest(tags) AS tag, count(*) AS n FROM "Project" GROUP BY 1 ORDER BY 2 DESC LIMIT 10`,
+    prisma.$queryRaw<{ day: Date; n: bigint }[]>`SELECT date_trunc('day', "createdAt") AS day, count(*) AS n FROM "Project" WHERE "createdAt" >= ${since} GROUP BY 1 ORDER BY 1`,
+  ])
+  res.json({
+    days, total: byVisibility.reduce((n, v) => n + v._count, 0), byVisibility: Object.fromEntries(byVisibility.map((v) => [v.visibility, v._count])), archived, newProjects, teams, commentsInPeriod: comments, starsInPeriod: stars,
+    topProjects: top.map((p) => ({ id: p.id, name: p.name, slug: p.slug, stars: p._count.likes, comments: p._count.comments, members: p._count.members })),
+    topTags: tags.map((t) => ({ tag: t.tag, projects: Number(t.n) })),
+    projectsPerDay: perDay.map((d) => ({ day: d.day.toISOString().slice(0, 10), count: Number(d.n) })),
+  })
+}))
+
 internal.get('/projects/:id/members', asyncHandler(async (req, res) => {
   const project = await prisma.project.findUnique({ where: { id: req.params.id }, include: { members: true } })
   if (!project) throw AppError.notFound('Project not found')
