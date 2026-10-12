@@ -19,7 +19,9 @@
     "backend/analytics-service",
     "backend/project-service",
     "backend/kanban-service",
-    "backend/audit-service"
+    "backend/audit-service",
+    "backend/monitoring-service",
+    "backend/kafka-service"
   ],
   "scripts": {
     "build:shared": "npm run build -w @devhub/shared",

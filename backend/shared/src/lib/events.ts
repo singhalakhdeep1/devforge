@@ -51,6 +51,8 @@ export type EventHandler<T = any> = (event: DomainEvent<T>) => Promise<void> | v
 export interface EventBus {
   readonly kind: 'kafka' | 'redis-streams';
   publish<T>(topic: string, type: string, data: T, key?: string): Promise<DomainEvent<T>>;
+  /** Send an existing envelope unchanged (same id), e.g. when replaying dead letters. */
+  republish(event: DomainEvent, key?: string): Promise<void>;
   /** `replay`: a brand-new consumer group starts from the oldest retained event instead of from now. */
   subscribe(topic: string, group: string, handler: EventHandler, opts?: { replay?: boolean }): Promise<void>;
   healthy(): Promise<boolean>;
@@ -118,12 +120,23 @@ class KafkaEventBus implements EventBus {
     return event;
   }
 
+  async republish(event: DomainEvent, key?: string): Promise<void> {
+    const producer = await this.getProducer();
+    await producer.send({ topic: event.topic, messages: [{ key: key ?? event.id, value: JSON.stringify(event), headers: { type: event.type } }] });
+  }
+
   async subscribe(topic: string, group: string, handler: EventHandler, opts: { replay?: boolean } = {}): Promise<void> {
     await this.ensureTopic(topic);
-    const consumer = this.kafka.consumer({ groupId: group, allowAutoTopicCreation: true });
+    // one group per (service, topic): consumers on different topics must not share a group, or every join rebalances them all
+    const consumer = this.kafka.consumer({ groupId: `${group}.${topic}`, allowAutoTopicCreation: true });
     await consumer.connect();
     await consumer.subscribe({ topic, fromBeginning: Boolean(opts.replay) });
     this.consumers.push(consumer);
+    // resolve only once partitions are assigned: a new group starts at "latest", so events published
+    // between subscribe() returning and the join finishing would otherwise be missed
+    const joined = new Promise<void>((resolve) => {
+      const off = consumer.on(consumer.events.GROUP_JOIN, () => { off(); resolve(); });
+    });
     await consumer.run({
       eachMessage: async ({ message }) => {
         if (!message.value) return;
@@ -135,6 +148,7 @@ class KafkaEventBus implements EventBus {
         }
       },
     });
+    await Promise.race([joined, new Promise<void>((r) => setTimeout(r, 20_000))]);
   }
 
   async healthy(): Promise<boolean> {
@@ -168,6 +182,10 @@ class RedisStreamEventBus implements EventBus {
     const event = envelope(this.service, topic, type, data);
     await this.redis.xadd(this.stream(topic), 'MAXLEN', '~', 10000, '*', 'event', JSON.stringify(event), 'key', key ?? '');
     return event;
+  }
+
+  async republish(event: DomainEvent, key?: string): Promise<void> {
+    await this.redis.xadd(this.stream(event.topic), 'MAXLEN', '~', 10000, '*', 'event', JSON.stringify(event), 'key', key ?? '');
   }
 
   async subscribe(topic: string, group: string, handler: EventHandler, opts: { replay?: boolean } = {}): Promise<void> {

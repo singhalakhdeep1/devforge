@@ -54,7 +54,7 @@ admin.get('/preview/:template', (req, res) => {
   res.type('html').send(r.html)
 })
 
-admin.post('/send-test', validate(z.object({ to: z.string().email(), template: z.enum(['welcome', 'verify', 'reset', 'receipt', 'invite']).default('welcome') })), asyncHandler(async (req, res) => {
+admin.post('/send-test', validate(z.object({ to: z.string().email(), template: z.enum(['welcome', 'verify', 'reset', 'receipt', 'invite', 'alert']).default('welcome') })), asyncHandler(async (req, res) => {
   const job = await enqueue({ to: req.body.to, template: req.body.template, data: SAMPLE[req.body.template as keyof typeof SAMPLE] })
   res.status(202).json({ queued: Boolean(job), jobId: job?.id })
 }))

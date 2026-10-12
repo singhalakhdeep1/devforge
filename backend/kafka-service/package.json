@@ -1,0 +1,25 @@
+{
+  "name": "@devhub/kafka-service",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Operations API for the event bus: topics, consumer-group lag, dead-letter inspection and replay (Kafka or Redis Streams)",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@devhub/shared": "*",
+    "express": "^4.21.2",
+    "kafkajs": "^2.2.4",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.17.14",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}

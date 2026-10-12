@@ -6,8 +6,8 @@ import { env } from '@devhub/shared'
 const FRONTEND = env('FRONTEND_URL', 'http://localhost:3000').replace(/\/$/, '')
 const BRAND = env('EMAIL_BRAND', 'DevForge')
 
-export type TemplateName = 'welcome' | 'verify' | 'reset' | 'receipt' | 'invite'
-export const TEMPLATES: TemplateName[] = ['welcome', 'verify', 'reset', 'receipt', 'invite']
+export type TemplateName = 'welcome' | 'verify' | 'reset' | 'receipt' | 'invite' | 'alert'
+export const TEMPLATES: TemplateName[] = ['welcome', 'verify', 'reset', 'receipt', 'invite', 'alert']
 
 export interface Rendered {
   subject: string
@@ -76,6 +76,14 @@ export function render(template: TemplateName, d: Record<string, unknown>): Rend
         text: `${d.inviterName || 'Someone'} invited you to join the ${kind} ${d.entityName || ''} on ${BRAND}.\n\nView the invitation (valid for 7 days):\n${d.url}\n`,
       }
     }
+    case 'alert': {
+      const resolved = d.state === 'resolved'
+      return {
+        subject: `[${resolved ? 'RESOLVED' : String(d.severity || 'alert').toUpperCase()}] ${d.message}`,
+        html: wrap(resolved ? 'Alert resolved' : 'Alert firing', `<p><strong>${esc(d.message)}</strong></p><p style="color:#52525b">Severity: ${esc(d.severity)} &middot; Subject: ${esc(d.subject)}</p>`, { url: `${FRONTEND}/admin/monitoring`, action: 'Open monitoring', footer: `Sent by ${BRAND} monitoring.` }),
+        text: `${resolved ? 'RESOLVED' : 'FIRING'} (${d.severity}): ${d.message}\nSubject: ${d.subject}\n${FRONTEND}/admin/monitoring\n`,
+      }
+    }
     case 'receipt': {
       const total = money(d.amount, String(d.currency || 'usd'))
       return {
@@ -94,5 +102,6 @@ export const SAMPLE: Record<TemplateName, Record<string, unknown>> = {
   verify: { name: 'Sam', url: `${FRONTEND}/verify/sample-token` },
   reset: { name: 'Sam', url: `${FRONTEND}/reset-password/sample-token` },
   invite: { name: 'Sam', inviterName: 'Alicia', entityName: 'Compiler Club', kind: 'project', role: 'MEMBER', url: `${FRONTEND}/invitations/sample-token` },
+  alert: { severity: 'critical', state: 'firing', message: 'search is not responding', subject: 'search' },
   receipt: { name: 'Sam', amount: 49, currency: 'usd', courseTitle: 'Build REST APIs with Node and Express', courseId: 2, orderId: 'sample-order' },
 }
