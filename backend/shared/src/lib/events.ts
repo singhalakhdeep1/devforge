@@ -51,7 +51,8 @@ export type EventHandler<T = any> = (event: DomainEvent<T>) => Promise<void> | v
 export interface EventBus {
   readonly kind: 'kafka' | 'redis-streams';
   publish<T>(topic: string, type: string, data: T, key?: string): Promise<DomainEvent<T>>;
-  subscribe(topic: string, group: string, handler: EventHandler): Promise<void>;
+  /** `replay`: a brand-new consumer group starts from the oldest retained event instead of from now. */
+  subscribe(topic: string, group: string, handler: EventHandler, opts?: { replay?: boolean }): Promise<void>;
   healthy(): Promise<boolean>;
   close(): Promise<void>;
 }
@@ -117,11 +118,11 @@ class KafkaEventBus implements EventBus {
     return event;
   }
 
-  async subscribe(topic: string, group: string, handler: EventHandler): Promise<void> {
+  async subscribe(topic: string, group: string, handler: EventHandler, opts: { replay?: boolean } = {}): Promise<void> {
     await this.ensureTopic(topic);
     const consumer = this.kafka.consumer({ groupId: group, allowAutoTopicCreation: true });
     await consumer.connect();
-    await consumer.subscribe({ topic, fromBeginning: false });
+    await consumer.subscribe({ topic, fromBeginning: Boolean(opts.replay) });
     this.consumers.push(consumer);
     await consumer.run({
       eachMessage: async ({ message }) => {
@@ -169,12 +170,12 @@ class RedisStreamEventBus implements EventBus {
     return event;
   }
 
-  async subscribe(topic: string, group: string, handler: EventHandler): Promise<void> {
+  async subscribe(topic: string, group: string, handler: EventHandler, opts: { replay?: boolean } = {}): Promise<void> {
     const stream = this.stream(topic);
     const consumer = `${this.service}-${process.pid}`;
     const ensureGroup = async () => {
       try {
-        await this.redis.xgroup('CREATE', stream, group, '$', 'MKSTREAM');
+        await this.redis.xgroup('CREATE', stream, group, opts.replay ? '0' : '$', 'MKSTREAM');
       } catch (e) {
         if (!String(e).includes('BUSYGROUP')) throw e;
       }

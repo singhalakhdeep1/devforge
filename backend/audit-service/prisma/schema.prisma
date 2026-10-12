@@ -1,0 +1,37 @@
+// Append-only audit trail. Every row carries the hash of the row before it, so deleting or editing
+// history breaks the chain and `GET /api/audit/verify` shows exactly where. Lives in its own Postgres
+// schema ("audit"); the service only ever inserts.
+
+generator client {
+  provider      = "prisma-client-js"
+  output        = "../src/generated/client"
+  binaryTargets = ["native", "debian-openssl-3.0.x", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("AUDIT_DATABASE_URL")
+}
+
+model AuditLog {
+  id         BigInt   @id @default(autoincrement())
+  at         DateTime @default(now())
+  actorId    String?
+  action     String
+  resource   String
+  resourceId String?
+  status     String   @default("SUCCESS")
+  ip         String?
+  userAgent  String?
+  details    Json     @default("{}")
+  /// sha256 of the previous row's hash plus this row's content
+  prevHash   String
+  hash       String   @unique
+  /// the bus event this came from; a redelivered event is recorded once
+  eventId    String?  @unique
+
+  @@index([at])
+  @@index([actorId, at])
+  @@index([action, at])
+  @@index([resource, resourceId])
+}
