@@ -1,0 +1,84 @@
+// Payment data: course orders, Stripe customers, subscriptions, processed webhook events, outbox.
+// Lives in its own Postgres schema ("payment").
+
+generator client {
+  provider      = "prisma-client-js"
+  output        = "../src/generated/client"
+  binaryTargets = ["native", "debian-openssl-3.0.x", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("PAYMENT_DATABASE_URL")
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  FAILED
+  EXPIRED
+  REFUNDED
+}
+
+model Order {
+  id                    String      @id @default(uuid())
+  userId                String
+  buyerEmail            String?
+  buyerName             String?
+  courseId              Int
+  courseTitle           String
+  amountCents           Int
+  currency              String      @default("usd")
+  status                OrderStatus @default(PENDING)
+  stripeSessionId       String?     @unique
+  stripePaymentIntentId String?
+  refundedCents         Int         @default(0)
+  createdAt             DateTime    @default(now())
+  paidAt                DateTime?
+  refundedAt            DateTime?
+
+  @@index([userId, courseId])
+  @@index([status, createdAt])
+}
+
+/// One Stripe customer per user, created on first need.
+model Customer {
+  userId           String   @id
+  stripeCustomerId String   @unique
+  createdAt        DateTime @default(now())
+}
+
+model Subscription {
+  id                   String    @id @default(uuid())
+  userId               String
+  stripeSubscriptionId String    @unique
+  plan                 String
+  status               String
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean   @default(false)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+/// Stripe retries webhooks and may deliver an event twice; each id is handled once.
+model StripeEvent {
+  id          String   @id
+  type        String
+  processedAt DateTime @default(now())
+}
+
+/// Transactional outbox: events are written in the same transaction as the state change and
+/// published afterwards, so a crash between "commit" and "publish" cannot lose a payment event.
+model Outbox {
+  id          Int       @id @default(autoincrement())
+  topic       String
+  type        String
+  key         String?
+  payload     Json
+  createdAt   DateTime  @default(now())
+  publishedAt DateTime?
+
+  @@index([publishedAt, id])
+}

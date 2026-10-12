@@ -1,32 +1,29 @@
 {
-    "name": "@devhub/payment-service",
-    "version": "1.0.0",
-    "description": "Stripe payment integration service with subscriptions and webhooks",
-    "scripts": {
-        "dev": "tsx watch src/index.ts",
-        "build": "tsc",
-        "start": "node dist/index.js",
-        "test": "jest"
-    },
-    "dependencies": {
-        "@devhub/shared": "*",
-        "express": "^4.18.2",
-        "stripe": "^14.10.0",
-        "@prisma/client": "^5.7.1",
-        "redis": "^4.6.12",
-        "dotenv": "^16.3.1",
-        "winston": "^3.11.0",
-        "cors": "^2.8.5",
-        "helmet": "^7.1.0",
-        "zod": "^3.22.4"
-    },
-    "devDependencies": {
-        "@types/express": "^4.17.21",
-        "@types/cors": "^2.8.17",
-        "@types/node": "^20.10.6",
-        "tsx": "^4.7.0",
-        "typescript": "^5.3.3",
-        "prisma": "^5.7.1",
-        "jest": "^29.7.0"
-    }
+  "name": "@devhub/payment-service",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Stripe payments: course checkout, refunds, Pro subscription, billing portal, webhooks, transactional outbox",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "generate": "prisma generate",
+    "build": "prisma generate && tsc && node ../../scripts/copy-generated.mjs",
+    "start": "node dist/index.js",
+    "typecheck": "prisma generate && tsc --noEmit",
+    "migrate": "prisma migrate deploy"
+  },
+  "dependencies": {
+    "@devhub/shared": "*",
+    "@prisma/client": "^5.22.0",
+    "express": "^4.21.2",
+    "stripe": "^14.25.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.17.14",
+    "prisma": "^5.22.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
 }

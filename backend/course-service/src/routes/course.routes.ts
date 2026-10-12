@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { Level, Prisma } from '../generated/client'
 import { z } from 'zod'
+import { createServiceClient } from '@devhub/shared'
 import { badRequest, forbidden, handle, intParam, notFound } from '../lib/errors'
 import { getProgress } from '../lib/learning'
 import { notify } from '../lib/notify'
@@ -9,6 +10,7 @@ import { optionalAuth, protect } from '../middleware/auth'
 import { validate } from '../middleware/validate'
 
 const router = Router()
+const payments = createServiceClient('payment')
 
 const listQuery = z.object({
     search: z.string().trim().max(100).optional(),
@@ -158,7 +160,10 @@ router.post(
         if (!course || !course.published) throw notFound('Course')
         if (course.instructorId === req.user.id) throw badRequest('You cannot enroll in your own course')
         if (Number(course.price) > 0) {
-            return res.status(402).json({ error: 'This is a paid course. Purchase it to enroll.', checkoutRequired: true })
+            // Pro subscribers can join paid courses without buying them. If the payment service cannot
+            // answer, treat the user as not subscribed rather than granting access.
+            const sub = await payments.get<{ active: boolean }>(`/internal/subscriptions/${req.user.id}`).catch(() => ({ active: false }))
+            if (!sub.active) return res.status(402).json({ error: 'This is a paid course. Purchase it or subscribe to Pro to enroll.', checkoutRequired: true })
         }
 
         const existing = await prisma.enrollment.findUnique({ where: { userId_courseId: { userId: req.user.id, courseId } } })

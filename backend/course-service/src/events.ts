@@ -54,5 +54,13 @@ export async function startConsumers() {
         }
     })
 
+    // payment.refunded -> drop the revenue row and the access that was bought
+    await bus.subscribe(TOPICS.paymentRefunded, GROUP, async ({ data }) => {
+        await prisma.coursePayment.deleteMany({ where: { orderId: String(data.orderId) } })
+        const stillPaid = await prisma.coursePayment.count({ where: { userId: data.userId, courseId: Number(data.courseId) } })
+        if (stillPaid === 0) await prisma.enrollment.deleteMany({ where: { userId: data.userId, courseId: Number(data.courseId) } })
+        await notify({ userId: data.userId, type: 'payment', title: 'Refund issued', body: 'Your purchase was refunded and course access removed.', link: '/courses' })
+    })
+
     log.logInformation('event consumers started')
 }

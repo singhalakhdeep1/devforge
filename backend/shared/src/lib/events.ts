@@ -23,6 +23,7 @@ export const TOPICS = {
   certificateIssued: 'devforge.certificate.issued',
   paymentSucceeded: 'devforge.payment.succeeded',
   paymentRefunded: 'devforge.payment.refunded',
+  subscriptionChanged: 'devforge.subscription.changed',
   projectCreated: 'devforge.project.created',
   projectUpdated: 'devforge.project.updated',
   taskChanged: 'devforge.task.changed',
