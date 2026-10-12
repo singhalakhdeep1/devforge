@@ -224,7 +224,10 @@ router.get('/me', authenticate, asyncHandler(async (req, res) => {
   res.json(publicUser(user));
 }));
 
-const optionalUrl = z.union([z.literal(''), z.string().trim().url().max(300)]).transform((v) => (v === '' ? null : v));
+// Only http(s) links: a "javascript:" URL rendered as an href would run script in other users' browsers
+const optionalUrl = z
+  .union([z.literal(''), z.string().trim().max(300).refine((v) => /^https?:\/\//i.test(v) && URL.canParse(v), 'Must be a valid http:// or https:// URL')])
+  .transform((v) => (v === '' ? null : v));
 const profileSchema = z.object({
   name: z.string().trim().min(1).max(100).optional(),
   bio: z.string().trim().max(1000).nullable().optional(),

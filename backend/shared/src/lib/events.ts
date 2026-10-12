@@ -170,11 +170,14 @@ class RedisStreamEventBus implements EventBus {
   async subscribe(topic: string, group: string, handler: EventHandler): Promise<void> {
     const stream = this.stream(topic);
     const consumer = `${this.service}-${process.pid}`;
-    try {
-      await this.redis.xgroup('CREATE', stream, group, '$', 'MKSTREAM');
-    } catch (e) {
-      if (!String(e).includes('BUSYGROUP')) throw e;
-    }
+    const ensureGroup = async () => {
+      try {
+        await this.redis.xgroup('CREATE', stream, group, '$', 'MKSTREAM');
+      } catch (e) {
+        if (!String(e).includes('BUSYGROUP')) throw e;
+      }
+    };
+    await ensureGroup();
     const reader = createRedis({ name: `${this.service}:${topic}`, blocking: true });
     this.readers.push(reader);
 
@@ -212,6 +215,11 @@ class RedisStreamEventBus implements EventBus {
         } catch (e) {
           if (!this.running) return;
           this.log.logWarning('stream read failed, retrying', { topic, error: String(e) });
+          // Redis lost the stream/group (restart without persistence, flush, failover): recreate and carry on
+          if (String(e).includes('NOGROUP')) {
+            await ensureGroup().catch(() => undefined);
+            pendingDone = true;
+          }
           await new Promise((r) => setTimeout(r, 1000));
         }
       }

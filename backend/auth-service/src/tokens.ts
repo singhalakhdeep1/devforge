@@ -25,7 +25,8 @@ export async function issueRefreshToken(userId: string, req: Request, familyId: 
   return { token, id: record.id, familyId };
 }
 
-const GRACE_MS = 10_000;
+// Two tabs refreshing at the same moment is normal; a replay outside this window is treated as theft
+const GRACE_MS = 3_000;
 
 /**
  * Validates and rotates a refresh token.

@@ -33,11 +33,8 @@ async function identify(req: Request): Promise<boolean> {
     const email = u.email || `${u.id}@unknown.local`
     const key = `${u.id}|${role}|${name}`
     if ((recentlySynced.get(key) ?? 0) < Date.now()) {
-        await prisma.user.upsert({
-            where: { id: u.id },
-            update: { role, ...(u.name ? { name } : {}) },
-            create: { id: u.id, email, name, role },
-        })
+        // create-only: the user.* events are the source of truth, and a token can be minutes stale
+        await prisma.user.upsert({ where: { id: u.id }, update: {}, create: { id: u.id, email, name, role } })
         if (recentlySynced.size > 5000) recentlySynced.clear()
         recentlySynced.set(key, Date.now() + SYNC_TTL_MS)
     }
