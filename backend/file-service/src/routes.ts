@@ -3,7 +3,7 @@ import { Router, type NextFunction, type Request, type Response } from 'express'
 import multer from 'multer'
 import sharp from 'sharp'
 import { z } from 'zod'
-import { AppError, TOPICS, asyncHandler, authenticate, createEventBus, createServiceClient, emit, env, envInt, fileUploadSize, fileUploads, userOf, validate } from '@devhub/shared'
+import { AppError, TOPICS, asyncHandler, authenticate, internalOnly, createEventBus, createServiceClient, emit, env, envInt, fileUploadSize, fileUploads, userOf, validate } from '@devhub/shared'
 import { prisma } from './db'
 import { storage } from './storage'
 
@@ -237,6 +237,18 @@ export async function purgeUser(userId: string) {
   for (const f of files) await storage().delete(f.key).catch(() => undefined)
   await prisma.file.deleteMany({ where: { ownerId: userId } })
 }
+
+/** For other services (a project attaching a file): metadata only, never the bytes. */
+export const internalRouter = Router()
+internalRouter.use(internalOnly)
+internalRouter.get(
+  '/files/:id',
+  asyncHandler(async (req, res) => {
+    const f = await prisma.file.findUnique({ where: { id: req.params.id } }).catch(() => null)
+    if (!f || !f.key.startsWith('files/')) throw AppError.notFound('File not found')
+    res.json({ id: f.id, ownerId: f.ownerId, name: f.name, mimeType: f.mimeType, size: f.size, visibility: f.visibility })
+  })
+)
 
 export { env }
 export default router

@@ -6,8 +6,8 @@ import { env } from '@devhub/shared'
 const FRONTEND = env('FRONTEND_URL', 'http://localhost:3000').replace(/\/$/, '')
 const BRAND = env('EMAIL_BRAND', 'DevForge')
 
-export type TemplateName = 'welcome' | 'verify' | 'reset' | 'receipt'
-export const TEMPLATES: TemplateName[] = ['welcome', 'verify', 'reset', 'receipt']
+export type TemplateName = 'welcome' | 'verify' | 'reset' | 'receipt' | 'invite'
+export const TEMPLATES: TemplateName[] = ['welcome', 'verify', 'reset', 'receipt', 'invite']
 
 export interface Rendered {
   subject: string
@@ -66,6 +66,16 @@ export function render(template: TemplateName, d: Record<string, unknown>): Rend
         html: wrap('Reset your password', `<p>Hi ${name}, we received a request to reset your password. The link works for one hour. If this was not you, you can ignore this email: your password stays the same.</p>`, { url: String(d.url), action: 'Choose a new password' }),
         text: `Hi ${d.name || 'there'},\n\nReset your password (valid for 1 hour):\n${d.url}\n\nIf you did not ask for this, ignore this email.\n`,
       }
+    case 'invite': {
+      const who = esc(d.inviterName || 'Someone')
+      const what = esc(d.entityName || 'a project')
+      const kind = d.kind === 'team' ? 'team' : 'project'
+      return {
+        subject: `${d.inviterName || 'Someone'} invited you to ${d.entityName || 'a ' + kind} on ${BRAND}`,
+        html: wrap(`You are invited to ${what}`, `<p>Hi ${name}, <strong>${who}</strong> invited you to join the ${kind} <strong>${what}</strong> as ${esc(String(d.role || 'member').toLowerCase())}. The invitation works for 7 days and only for this email address.</p>`, { url: String(d.url), action: 'View invitation' }),
+        text: `${d.inviterName || 'Someone'} invited you to join the ${kind} ${d.entityName || ''} on ${BRAND}.\n\nView the invitation (valid for 7 days):\n${d.url}\n`,
+      }
+    }
     case 'receipt': {
       const total = money(d.amount, String(d.currency || 'usd'))
       return {
@@ -83,5 +93,6 @@ export const SAMPLE: Record<TemplateName, Record<string, unknown>> = {
   welcome: { name: 'Sam' },
   verify: { name: 'Sam', url: `${FRONTEND}/verify/sample-token` },
   reset: { name: 'Sam', url: `${FRONTEND}/reset-password/sample-token` },
+  invite: { name: 'Sam', inviterName: 'Alicia', entityName: 'Compiler Club', kind: 'project', role: 'MEMBER', url: `${FRONTEND}/invitations/sample-token` },
   receipt: { name: 'Sam', amount: 49, currency: 'usd', courseTitle: 'Build REST APIs with Node and Express', courseId: 2, orderId: 'sample-order' },
 }

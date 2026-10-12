@@ -128,7 +128,7 @@ admin.use(requireRole('ADMIN'))
 
 admin.post(
   '/reindex',
-  validate(z.object({ index: z.enum(['courses', 'users', 'all']).default('all') })),
+  validate(z.object({ index: z.enum(['courses', 'users', 'projects', 'all']).default('all') })),
   asyncHandler(async (req, res) => {
     const started = Date.now()
     res.json({ ...(await reindex(req.body.index)), tookMs: Date.now() - started })

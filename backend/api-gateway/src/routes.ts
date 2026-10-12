@@ -44,6 +44,7 @@ export const routes: Route[] = [
   { prefix: '/api/analytics', service: 'analytics', auth: 'optional' },
   { prefix: '/api/projects', service: 'project', auth: 'optional' },
   { prefix: '/api/teams', service: 'project', auth: 'required' },
+  { prefix: '/api/social', service: 'project', auth: 'optional' },
   { prefix: '/api/boards', service: 'kanban', auth: 'required' },
   { prefix: '/api/tasks', service: 'kanban', auth: 'required' },
   { prefix: '/api/video', service: 'video', auth: 'required' },

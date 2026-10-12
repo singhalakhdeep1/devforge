@@ -4,6 +4,7 @@ import { AppError, TOPICS, createEventBus, createLogger, createServiceClient } f
 const log = createLogger('search')
 const courses = createServiceClient('course')
 const auth = createServiceClient('auth')
+const projectSvc = createServiceClient('project')
 const GROUP = 'search-service'
 
 interface CourseDoc {
@@ -109,16 +110,27 @@ async function* userBatches(): AsyncGenerator<Record<string, unknown>[]> {
   }
 }
 
-export async function reindex(which: 'courses' | 'users' | 'all') {
+async function* projectBatches(): AsyncGenerator<Record<string, unknown>[]> {
+  let after = ''
+  for (;;) {
+    const page = await projectSvc.get<{ projects: Record<string, unknown>[]; next: string | null }>('/internal/projects', { after, limit: 100 })
+    yield page.projects
+    if (!page.next) return
+    after = page.next
+  }
+}
+
+export async function reindex(which: 'courses' | 'users' | 'projects' | 'all') {
   const out: Record<string, unknown> = {}
   if (which === 'courses' || which === 'all') out.courses = await rebuildIndex(INDEX.courses, courseBatches() as AsyncIterable<{ id: number }[]>)
+  if (which === 'projects' || which === 'all') out.projects = await rebuildIndex(INDEX.projects, projectBatches() as AsyncIterable<{ id: string }[]>)
   if (which === 'users' || which === 'all') out.users = await rebuildIndex(INDEX.users, userBatches() as AsyncIterable<{ id: string }[]>)
   return out
 }
 
 /** On a fresh cluster (or after data loss) fill the indexes without waiting for an admin to ask. */
 export async function backfillIfEmpty() {
-  for (const [name, alias] of [['courses', INDEX.courses], ['users', INDEX.users]] as const) {
+  for (const [name, alias] of [['courses', INDEX.courses], ['users', INDEX.users], ['projects', INDEX.projects]] as const) {
     const { count } = await es().count({ index: alias })
     if (count === 0) {
       log.logInformation(`backfilling empty ${name} index`)

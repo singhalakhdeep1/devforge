@@ -1,6 +1,6 @@
 import { TOPICS, createEventBus, redisHealthy, startService } from '@devhub/shared'
 import { prisma } from './db'
-import router, { publicRouter, purgeUser } from './routes'
+import router, { internalRouter, publicRouter, purgeUser } from './routes'
 import { storage } from './storage'
 
 void startService({
@@ -10,6 +10,7 @@ void startService({
   routes: (app) => {
     app.use('/uploads', publicRouter)
     app.use('/api/files', router)
+    app.use('/internal', internalRouter)
   },
   ready: { postgres: () => prisma.$queryRaw`SELECT 1`, redis: () => redisHealthy(), storage: async () => storage().kind },
   onStart: async () => {
