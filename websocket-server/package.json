@@ -1,24 +1,23 @@
 {
-    "name": "@devhub/websocket-server",
-    "version": "1.0.0",
-    "scripts": {
-        "dev": "tsx watch src/index.ts",
-        "build": "tsc",
-        "start": "node dist/index.js"
-    },
-    "dependencies": {
-        "@devhub/shared": "*",
-        "socket.io": "^4.6.1",
-        "socket.io-redis": "^6.1.1",
-        "redis": "^4.6.12",
-        "jsonwebtoken": "^9.0.2",
-        "dotenv": "^16.3.1",
-        "winston": "^3.11.0"
-    },
-    "devDependencies": {
-        "@types/node": "^20.10.6",
-        "@types/jsonwebtoken": "^9.0.5",
-        "tsx": "^4.7.0",
-        "typescript": "^5.3.3"
-    }
+  "name": "@devhub/websocket-server",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Realtime hub: authenticated Socket.IO with a Redis adapter, user channels, editor rooms, pub/sub bridge from services",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@devhub/shared": "*",
+    "@socket.io/redis-adapter": "^8.3.0",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.14",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
 }

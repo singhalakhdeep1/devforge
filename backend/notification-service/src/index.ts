@@ -1,67 +1,54 @@
-import './tracing';
-import express, { Application } from 'express';
-import mongoose from 'mongoose';
-import helmet from 'helmet';
-import cors from 'cors';
-import dotenv from 'dotenv';
-import { logger } from './config/logger';
-import { errorHandler } from './middleware/errorHandler';
-import notificationRoutes from './routes/notification.routes';
+import mongoose from 'mongoose'
+import { TOPICS, createEventBus, createLogger, env, startService } from '@devhub/shared'
+import { Notification } from './model'
+import router, { internalRouter } from './routes'
+import { createNotification } from './service'
 
-dotenv.config();
+const log = createLogger('notification')
+const GROUP = 'notification-service'
 
-const app: Application = express();
-const PORT = process.env.NOTIFICATION_SERVICE_PORT || 4002;
+async function startConsumers() {
+    const bus = createEventBus('notification')
 
-// Middleware
-app.use(helmet());
-app.use(cors());
-app.use(express.json());
+    // Any service can ask for a notification by publishing this event
+    await bus.subscribe(TOPICS.notificationRequested, GROUP, async ({ data }) => {
+        await createNotification(data)
+    })
 
-// Routes
-app.use('/api/v1/notifications', notificationRoutes);
+    await bus.subscribe(TOPICS.userRegistered, GROUP, async ({ data }) => {
+        await createNotification({ userId: data.id, type: 'system', title: 'Welcome to DevForge', body: 'Browse the catalogue and start your first course.', link: '/courses' })
+    })
 
-app.get('/health', (req, res) => {
-    res.json({
-        status: 'healthy',
-        service: 'notification-service',
-        database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-    });
-});
+    await bus.subscribe(TOPICS.certificateIssued, GROUP, async ({ data }) => {
+        await createNotification({ userId: data.userId, type: 'certificate', title: 'Certificate earned', body: data.courseTitle ? `You completed ${data.courseTitle}` : undefined, link: '/certificates' })
+    })
 
-// Error handler
-app.use(errorHandler);
+    // The account is gone: its notifications go too
+    await bus.subscribe(TOPICS.userDeleted, GROUP, async ({ data }) => {
+        await Notification.deleteMany({ userId: data.id })
+    })
+    log.logInformation('event consumers started')
+}
 
-// MongoDB connection
-const connectDB = async () => {
-    try {
-        await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/devhub');
-        logger.info('📦 MongoDB connected successfully');
-    } catch (error) {
-        logger.error('MongoDB connection error:', error);
-        process.exit(1);
-    }
-};
-
-// Start server
-const startServer = async () => {
-    await connectDB();
-
-    const server = app.listen(PORT, () => {
-        logger.info(`🔔 Notification Service running on port ${PORT}`);
-    });
-
-    // Graceful shutdown
-    process.on('SIGTERM', async () => {
-        logger.info('SIGTERM received, shutting down gracefully');
-        server.close(async () => {
-            await mongoose.connection.close();
-            logger.info('MongoDB connection closed');
-            process.exit(0);
-        });
-    });
-};
-
-startServer();
-
-export default app;
+void (async () => {
+    await mongoose.connect(env('MONGODB_URI', 'mongodb://localhost:27017') + '', { dbName: env('NOTIFICATION_DB', 'devforge_notifications'), serverSelectionTimeoutMS: 8000 })
+    await Notification.init() // make sure the TTL / lookup indexes exist before serving
+    await startService({
+        name: 'notification',
+        trustProxy: true,
+        cors: false,
+        routes: (app) => {
+            app.use('/api/notifications', router)
+            app.use('/internal', internalRouter)
+        },
+        ready: { mongodb: async () => mongoose.connection.readyState === 1 },
+        onStart: () => startConsumers(),
+        onStop: async () => {
+            await createEventBus('notification').close()
+            await mongoose.disconnect()
+        },
+    })
+})().catch((e) => {
+    console.error('notification-service failed to start', e)
+    process.exit(1)
+})

@@ -1,113 +1,191 @@
-import { Server } from 'socket.io';
-import { createServer } from 'http';
-import jwt from 'jsonwebtoken';
-import dotenv from 'dotenv';
-import { logger } from './config/logger';
+import { createAdapter } from '@socket.io/redis-adapter'
+import { Server, type Socket } from 'socket.io'
+import {
+    REALTIME_CHANNEL,
+    createLogger,
+    createRedis,
+    env,
+    getRedis,
+    redisHealthy,
+    startService,
+    verifyAccessToken,
+    websocketConnections,
+    websocketMessages,
+    type RealtimeMessage,
+} from '@devhub/shared'
 
-dotenv.config();
+const log = createLogger('websocket')
 
-const httpServer = createServer();
-const io = new Server(httpServer, {
-    cors: {
-        origin: process.env.CORS_ORIGIN?.split(',') || ['http://localhost:3000'],
-        credentials: true,
+interface Participant {
+    userId: string
+    name: string
+    color: string
+}
+
+const COLORS = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316']
+const ROOM_ID = /^[a-zA-Z0-9_-]{1,64}$/
+const MAX_CODE_LENGTH = 200_000
+const ROOM_TTL_SECONDS = 6 * 3600
+const roomKey = (id: string) => `editor:room:${id}`
+
+void startService({
+    name: 'websocket',
+    cors: false,
+    trustProxy: true,
+    ready: { redis: () => redisHealthy() },
+    routes: async (_app, server) => {
+        const origins = env('CORS_ORIGIN', 'http://localhost:3000').split(',').map((s) => s.trim())
+        const io = new Server(server, {
+            cors: { origin: origins, credentials: true },
+            pingTimeout: 60_000,
+            pingInterval: 25_000,
+            maxHttpBufferSize: 1_000_000,
+        })
+
+        // Several websocket-server instances share rooms through Redis
+        const pub = createRedis({ name: 'ws-adapter-pub' })
+        const sub = pub.duplicate()
+        sub.on('error', () => undefined)
+        io.adapter(createAdapter(pub, sub))
+
+        // Every connection must present a valid access token
+        io.use((socket, next) => {
+            try {
+                const u = verifyAccessToken(String(socket.handshake.auth?.token ?? ''))
+                socket.data.user = { id: u.id, name: u.name || u.email || 'Anonymous', role: u.role }
+                next()
+            } catch {
+                next(new Error('Unauthorized'))
+            }
+        })
+
+        io.on('connection', (socket) => {
+            const user = socket.data.user as { id: string; name: string; role: string }
+            socket.join(`user:${user.id}`) // personal channel: notifications and anything addressed to this user
+            websocketConnections.inc({ service: 'websocket' })
+            socket.on('disconnect', () => websocketConnections.dec({ service: 'websocket' }))
+            registerEditorHandlers(io, socket, user)
+            registerGenericRooms(io, socket, user)
+        })
+
+        // Services publish to this channel; we deliver to whoever is in the room, on any instance
+        const bridge = createRedis({ name: 'ws-bridge' })
+        await bridge.subscribe(REALTIME_CHANNEL)
+        bridge.on('message', (_channel, raw) => {
+            try {
+                const m = JSON.parse(raw) as RealtimeMessage
+                if (typeof m.room === 'string' && typeof m.event === 'string') {
+                    io.to(m.room).emit(m.event, m.payload)
+                    websocketMessages.inc({ direction: 'out', event_type: m.event, service: 'websocket' })
+                }
+            } catch {
+                log.logWarning('dropped malformed realtime message')
+            }
+        })
+        log.logInformation('realtime hub ready')
     },
-    pingTimeout: 60000,
-    pingInterval: 25000,
-});
+}).catch((e) => {
+    console.error('websocket-server failed to start', e)
+    process.exit(1)
+})
 
-const PORT = process.env.WEBSOCKET_PORT || 4006;
+/* ───────────────────────── collaborative editor rooms ───────────────────────── */
 
-// Authentication middleware
-io.use((socket, next) => {
-    const token = socket.handshake.auth.token;
+async function presence(io: Server, roomId: string): Promise<Participant[]> {
+    const sockets = await io.in(`room:${roomId}`).fetchSockets()
+    return sockets.map((s) => s.data.participant as Participant).filter(Boolean)
+}
 
-    if (!token) {
-        return next(new Error('Authentication error'));
-    }
+function registerEditorHandlers(io: Server, socket: Socket, user: { id: string; name: string }) {
+    const redis = getRedis()
 
-    try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET as string);
-        (socket as any).user = decoded;
-        next();
-    } catch (error) {
-        next(new Error('Authentication error'));
-    }
-});
+    socket.on('room:join', async (roomId: unknown) => {
+        if (typeof roomId !== 'string' || !ROOM_ID.test(roomId)) return
+        const name = `room:${roomId}`
+        if (socket.rooms.has(name)) return
 
-// Connection handler
-io.on('connection', (socket) => {
-    const user = (socket as any).user;
-    logger.info(`User connected: ${user.userId}`);
+        const count = (await io.in(name).fetchSockets()).length
+        socket.data.participant = { userId: user.id, name: user.name, color: COLORS[count % COLORS.length] } satisfies Participant
+        await socket.join(name)
 
-    // Join user's personal room
-    socket.join(`user:${user.userId}`);
+        const state = await redis.hgetall(roomKey(roomId))
+        socket.emit('room:state', { code: state.code ?? '', language: state.language ?? 'javascript', version: Number(state.version ?? 0) })
+        io.to(name).emit('room:presence', await presence(io, roomId))
+    })
 
-    // Handle joining rooms
-    socket.on('join_room', (roomId: string) => {
-        socket.join(roomId);
-        logger.info(`User ${user.userId} joined room: ${roomId}`);
-        socket.to(roomId).emit('user_joined', { userId: user.userId });
-    });
+    socket.on('room:leave', async (roomId: unknown) => {
+        if (typeof roomId !== 'string' || !ROOM_ID.test(roomId)) return
+        await socket.leave(`room:${roomId}`)
+        io.to(`room:${roomId}`).emit('room:presence', await presence(io, roomId))
+    })
 
-    // Handle leaving rooms
-    socket.on('leave_room', (roomId: string) => {
-        socket.leave(roomId);
-        logger.info(`User ${user.userId} left room: ${roomId}`);
-        socket.to(roomId).emit('user_left', { userId: user.userId });
-    });
+    // Whole-document sync: the last writer wins, which suits short pair-programming sessions
+    socket.on('code:change', async (payload: { roomId?: string; code?: string; language?: string }) => {
+        const { roomId, code, language } = payload ?? {}
+        if (typeof roomId !== 'string' || !ROOM_ID.test(roomId) || typeof code !== 'string' || code.length > MAX_CODE_LENGTH) return
+        if (!socket.rooms.has(`room:${roomId}`)) return
+        const key = roomKey(roomId)
+        const lang = typeof language === 'string' ? language.slice(0, 32) : undefined
+        const version = await redis.hincrby(key, 'version', 1)
+        await redis.hset(key, 'code', code, ...(lang ? ['language', lang] : []))
+        await redis.expire(key, ROOM_TTL_SECONDS)
+        socket.to(`room:${roomId}`).emit('code:update', { code, language: lang ?? (await redis.hget(key, 'language')) ?? 'javascript', version, from: user.id })
+        websocketMessages.inc({ direction: 'in', event_type: 'code:change', service: 'websocket' })
+    })
 
-    // Handle messages
-    socket.on('message', (data: { roomId: string; content: string; type: string }) => {
-        const message = {
-            id: Math.random().toString(36).substring(7),
-            userId: user.userId,
-            ...data,
-            timestamp: new Date().toISOString(),
-        };
+    socket.on('room:output', (payload: { roomId?: string; output?: string }) => {
+        const { roomId, output } = payload ?? {}
+        if (typeof roomId !== 'string' || typeof output !== 'string' || output.length > 50_000) return
+        if (!socket.rooms.has(`room:${roomId}`)) return
+        socket.to(`room:${roomId}`).emit('room:output', { output, from: user.name })
+    })
 
-        io.to(data.roomId).emit('message', message);
-        logger.info(`Message sent to room ${data.roomId}`);
-    });
-
-    // Handle typing indicator
-    socket.on('typing', (data: { roomId: string; isTyping: boolean }) => {
-        socket.to(data.roomId).emit('typing', {
-            userId: user.userId,
-            isTyping: data.isTyping,
-        });
-    });
-
-    // Handle presence
-    socket.on('presence', (status: string) => {
-        io.emit('presence', { userId: user.userId, status });
-    });
-
-    // Handle notifications
-    socket.on('notification', (data: any) => {
-        if (data.targetUserId) {
-            io.to(`user:${data.targetUserId}`).emit('notification', data);
+    socket.on('disconnecting', () => {
+        for (const name of socket.rooms) {
+            if (!name.startsWith('room:')) continue
+            const roomId = name.slice(5)
+            // the socket is still counted while "disconnecting"; recompute after it has left
+            setTimeout(() => void presence(io, roomId).then((p) => io.to(name).emit('room:presence', p)), 50)
         }
-    });
+    })
+}
 
-    // Handle disconnection
-    socket.on('disconnect', () => {
-        logger.info(`User disconnected: ${user.userId}`);
-        io.emit('presence', { userId: user.userId, status: 'offline' });
-    });
-});
+/* ───────────────────── generic rooms (boards, projects, chat) ───────────────────── */
 
-httpServer.listen(PORT, () => {
-    logger.info(`🔌 WebSocket Server running on port ${PORT}`);
-});
+/**
+ * Rooms other than editor rooms are scoped to a resource ("board:<id>", "project:<id>"). Joining
+ * is allowed only if the owning service confirms membership; until a resource type is wired to a
+ * checker, joins for it are refused.
+ */
+type Checker = (user: { id: string; role: string }, resourceId: string) => Promise<boolean>
+export const roomCheckers: Record<string, Checker> = {}
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-    logger.info('SIGTERM received, closing WebSocket server');
-    httpServer.close(() => {
-        logger.info('WebSocket server closed');
-        process.exit(0);
-    });
-});
+function registerGenericRooms(io: Server, socket: Socket, user: { id: string; name: string; role: string }) {
+    socket.on('join_room', async (roomId: unknown, ack?: (r: { ok: boolean }) => void) => {
+        const m = typeof roomId === 'string' ? /^([a-z]+):([\w-]{1,64})$/.exec(roomId) : null
+        const checker = m && roomCheckers[m[1]]
+        let ok = false
+        try {
+            ok = Boolean(checker && (await checker(user, m![2])))
+        } catch {
+            ok = false
+        }
+        if (ok) {
+            await socket.join(roomId as string)
+            socket.to(roomId as string).emit('user_joined', { userId: user.id })
+        }
+        ack?.({ ok })
+    })
 
-export default io;
+    socket.on('leave_room', async (roomId: unknown) => {
+        if (typeof roomId !== 'string') return
+        await socket.leave(roomId)
+        socket.to(roomId).emit('user_left', { userId: user.id })
+    })
+
+    socket.on('typing', (data: { roomId?: string; isTyping?: boolean }) => {
+        if (typeof data?.roomId === 'string' && socket.rooms.has(data.roomId)) {
+            socket.to(data.roomId).emit('typing', { userId: user.id, isTyping: Boolean(data.isTyping) })
+        }
+    })
+}

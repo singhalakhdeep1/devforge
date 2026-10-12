@@ -7,7 +7,9 @@
     "backend/shared",
     "backend/auth-service",
     "backend/course-service",
-    "backend/api-gateway"
+    "backend/api-gateway",
+    "backend/notification-service",
+    "websocket-server"
   ],
   "scripts": {
     "build:shared": "npm run build -w @devhub/shared",
