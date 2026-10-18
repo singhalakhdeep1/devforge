@@ -1,257 +1,156 @@
 import { Server as SocketServer, Socket } from 'socket.io';
+import type { AuthUser } from '@devhub/shared';
 import { VideoService } from '../services/video.service';
 import { logger } from '../config/logger';
-import { types as mediasoupTypes } from 'mediasoup';
+import { canJoin, getRoom } from '../rooms';
 
+type Ack = (res: unknown) => void;
+
+/**
+ * Signalling for the SFU. The socket is authenticated at connection time (see index.ts), and the
+ * room and peer id are fixed by the server when the client joins: `roomId` / `peerId` sent with
+ * later events are ignored, so a client can only act as itself in the room it joined.
+ */
 export function setupVideoSocketHandlers(io: SocketServer, videoService: VideoService) {
     io.on('connection', (socket: Socket) => {
-        logger.info(`Client connected: ${socket.id}`);
+        const user = socket.data.user as AuthUser;
+        logger.info(`Client connected: ${socket.id}`, { userId: user.id });
 
         let currentRoomId: string | null = null;
         let currentPeerId: string | null = null;
 
-        /**
-         * Join a room
-         */
-        socket.on('join', async ({ roomId, peerId }, callback) => {
-            try {
-                currentRoomId = roomId;
-                currentPeerId = peerId;
+        const ack = (cb: unknown): Ack => (typeof cb === 'function' ? (cb as Ack) : () => undefined);
 
-                // Join socket room
-                socket.join(roomId);
-
-                // Add peer to video service
-                await videoService.addPeer(roomId, peerId, socket);
-
-                // Get router RTP capabilities
-                const rtpCapabilities = await videoService.getRouterRtpCapabilities(roomId);
-
-                // Get existing peers
-                const existingPeers = videoService.getPeersInRoom(roomId).filter(id => id !== peerId);
-
-                logger.info(`Peer ${peerId} joined room ${roomId}`);
-
-                callback({
-                    rtpCapabilities,
-                    existingPeers,
-                });
-
-                // Notify other peers
-                socket.to(roomId).emit('newPeer', { peerId });
-            } catch (error) {
-                logger.error('Join error:', error);
-                callback({ error: 'Failed to join room' });
-            }
-        });
-
-        /**
-         * Create WebRTC transport
-         */
-        socket.on('createTransport', async ({ roomId, peerId, direction }, callback) => {
-            try {
-                const transportParams = await videoService.createWebRtcTransport(
-                    roomId,
-                    peerId,
-                    direction
-                );
-
-                callback(transportParams);
-            } catch (error) {
-                logger.error('Create transport error:', error);
-                callback({ error: 'Failed to create transport' });
-            }
-        });
-
-        /**
-         * Connect transport
-         */
-        socket.on('connectTransport', async ({ roomId, peerId, transportId, dtlsParameters }, callback) => {
-            try {
-                await videoService.connectTransport(roomId, peerId, transportId, dtlsParameters);
-                callback({ success: true });
-            } catch (error) {
-                logger.error('Connect transport error:', error);
-                callback({ error: 'Failed to connect transport' });
-            }
-        });
-
-        /**
-         * Produce media
-         */
-        socket.on('produce', async ({ roomId, peerId, transportId, kind, rtpParameters, appData }, callback) => {
-            try {
-                const { id } = await videoService.produce(
-                    roomId,
-                    peerId,
-                    transportId,
-                    kind,
-                    rtpParameters,
-                    appData
-                );
-
-                callback({ id });
-            } catch (error) {
-                logger.error('Produce error:', error);
-                callback({ error: 'Failed to produce' });
-            }
-        });
-
-        /**
-         * Consume media
-         */
-        socket.on('consume', async ({ roomId, peerId, producerPeerId, producerId, rtpCapabilities }, callback) => {
-            try {
-                const consumerParams = await videoService.consume(
-                    roomId,
-                    peerId,
-                    producerPeerId,
-                    producerId,
-                    rtpCapabilities
-                );
-
-                callback(consumerParams);
-            } catch (error) {
-                logger.error('Consume error:', error);
-                callback({ error: 'Failed to consume' });
-            }
-        });
-
-        /**
-         * Resume consumer
-         */
-        socket.on('resumeConsumer', async ({ roomId, peerId, consumerId }, callback) => {
-            try {
-                await videoService.resumeConsumer(roomId, peerId, consumerId);
-                callback({ success: true });
-            } catch (error) {
-                logger.error('Resume consumer error:', error);
-                callback({ error: 'Failed to resume consumer' });
-            }
-        });
-
-        /**
-         * Pause producer
-         */
-        socket.on('pauseProducer', async ({ roomId, peerId, producerId }, callback) => {
-            try {
-                await videoService.pauseProducer(roomId, peerId, producerId);
-                callback({ success: true });
-            } catch (error) {
-                logger.error('Pause producer error:', error);
-                callback({ error: 'Failed to pause producer' });
-            }
-        });
-
-        /**
-         * Resume producer
-         */
-        socket.on('resumeProducer', async ({ roomId, peerId, producerId }, callback) => {
-            try {
-                await videoService.resumeProducer(roomId, peerId, producerId);
-                callback({ success: true });
-            } catch (error) {
-                logger.error('Resume producer error:', error);
-                callback({ error: 'Failed to resume producer' });
-            }
-        });
-
-        /**
-         * Close producer
-         */
-        socket.on('closeProducer', async ({ roomId, peerId, producerId }, callback) => {
-            try {
-                await videoService.closeProducer(roomId, peerId, producerId);
-                callback({ success: true });
-            } catch (error) {
-                logger.error('Close producer error:', error);
-                callback({ error: 'Failed to close producer' });
-            }
-        });
-
-        /**
-         * Get room stats
-         */
-        socket.on('getRoomStats', async ({ roomId }, callback) => {
-            try {
-                const stats = await videoService.getRoomStats(roomId);
-                callback(stats);
-            } catch (error) {
-                logger.error('Get room stats error:', error);
-                callback({ error: 'Failed to get room stats' });
-            }
-        });
-
-        /**
-         * Send chat message in call
-         */
-        socket.on('chatMessage', ({ roomId, peerId, message }) => {
-            socket.to(roomId).emit('chatMessage', {
-                peerId,
-                message,
-                timestamp: new Date(),
+        /** Runs a handler that needs a joined room; errors go back through the acknowledgement. */
+        const inRoom = (event: string, fn: (roomId: string, peerId: string, payload: any) => Promise<unknown>) =>
+            socket.on(event, async (payload: any, callback?: unknown) => {
+                const reply = ack(callback);
+                if (!currentRoomId || !currentPeerId) return reply({ error: 'Join a room first' });
+                try {
+                    reply((await fn(currentRoomId, currentPeerId, payload ?? {})) ?? { success: true });
+                } catch (error) {
+                    logger.warn(`${event} failed`, error);
+                    reply({ error: (error as Error).message || `Failed: ${event}` });
+                }
             });
-        });
 
         /**
-         * Screen sharing started
+         * Join a room: { roomId, code? } → { peerId, rtpCapabilities, existingPeers, producers }
          */
-        socket.on('screenShareStarted', ({ roomId, peerId }) => {
-            socket.to(roomId).emit('screenShareStarted', { peerId });
-        });
-
-        /**
-         * Screen sharing stopped
-         */
-        socket.on('screenShareStopped', ({ roomId, peerId }) => {
-            socket.to(roomId).emit('screenShareStopped', { peerId });
-        });
-
-        /**
-         * Raise hand
-         */
-        socket.on('raiseHand', ({ roomId, peerId }) => {
-            socket.to(roomId).emit('handRaised', { peerId });
-        });
-
-        /**
-         * Lower hand
-         */
-        socket.on('lowerHand', ({ roomId, peerId }) => {
-            socket.to(roomId).emit('handLowered', { peerId });
-        });
-
-        /**
-         * Leave room
-         */
-        socket.on('leave', async ({ roomId, peerId }, callback) => {
+        socket.on('join', async ({ roomId, code }: { roomId?: string; code?: string } = {}, callback?: unknown) => {
+            const reply = ack(callback);
             try {
-                await videoService.removePeer(roomId, peerId);
-                socket.leave(roomId);
+                if (currentRoomId) return reply({ error: 'Already in a call; leave it first' });
+                const room = await getRoom(String(roomId ?? ''));
+                if (!(await canJoin(room, user, code))) return reply({ error: 'You are not invited to this call' });
+                if (videoService.getPeersInRoom(room.id).length >= room.maxPeers) return reply({ error: `This call is full (${room.maxPeers} people)` });
 
-                currentRoomId = null;
-                currentPeerId = null;
+                const peerId = `${user.id}:${socket.id}`;
+                await videoService.addPeer(room.id, peerId, socket, { userId: user.id, name: user.name });
+                currentRoomId = room.id;
+                currentPeerId = peerId;
+                socket.join(room.id);
 
-                callback({ success: true });
+                const existingPeers = videoService.getPeersInRoom(room.id).filter((id) => id !== peerId);
+                reply({
+                    peerId,
+                    room: { id: room.id, name: room.name, scope: room.scope, resourceId: room.resourceId, ownerId: room.ownerId },
+                    rtpCapabilities: await videoService.getRouterRtpCapabilities(room.id),
+                    existingPeers,
+                    participants: (await videoService.getRoomStats(room.id)).participants,
+                    producers: videoService.getProducersInRoom(room.id, peerId),
+                });
+                socket.to(room.id).emit('newPeer', { peerId, userId: user.id, name: user.name });
+                logger.info(`Peer ${peerId} joined room ${room.id}`);
+            } catch (error) {
+                logger.warn('Join error', error);
+                reply({ error: (error as Error).message || 'Failed to join room' });
+            }
+        });
+
+        inRoom('createTransport', (roomId, peerId, { direction }) => {
+            if (direction !== 'send' && direction !== 'recv') throw new Error('direction must be "send" or "recv"');
+            return videoService.createWebRtcTransport(roomId, peerId, direction);
+        });
+
+        inRoom('connectTransport', async (roomId, peerId, { transportId, dtlsParameters }) => {
+            await videoService.connectTransport(roomId, peerId, transportId, dtlsParameters);
+            return { success: true };
+        });
+
+        inRoom('produce', async (roomId, peerId, { transportId, kind, rtpParameters, appData }) => {
+            if (kind !== 'audio' && kind !== 'video') throw new Error('kind must be "audio" or "video"');
+            const source = ['mic', 'webcam', 'screen'].includes(appData?.source) ? appData.source : kind === 'audio' ? 'mic' : 'webcam';
+            return videoService.produce(roomId, peerId, transportId, kind, rtpParameters, { source });
+        });
+
+        inRoom('consume', (roomId, peerId, { producerPeerId, producerId, rtpCapabilities }) =>
+            videoService.consume(roomId, peerId, producerPeerId, producerId, rtpCapabilities),
+        );
+
+        inRoom('resumeConsumer', async (roomId, peerId, { consumerId }) => {
+            await videoService.resumeConsumer(roomId, peerId, consumerId);
+            return { success: true };
+        });
+
+        inRoom('pauseProducer', async (roomId, peerId, { producerId }) => {
+            await videoService.pauseProducer(roomId, peerId, producerId);
+            return { success: true };
+        });
+
+        inRoom('resumeProducer', async (roomId, peerId, { producerId }) => {
+            await videoService.resumeProducer(roomId, peerId, producerId);
+            return { success: true };
+        });
+
+        inRoom('closeProducer', async (roomId, peerId, { producerId }) => {
+            await videoService.closeProducer(roomId, peerId, producerId);
+            return { success: true };
+        });
+
+        inRoom('getRoomStats', (roomId) => videoService.getRoomStats(roomId));
+
+        /**
+         * In-call chat and status signals, relayed to the others in the room
+         */
+        socket.on('chatMessage', ({ message }: { message?: string } = {}) => {
+            const text = String(message ?? '').trim().slice(0, 2000);
+            if (!currentRoomId || !text) return;
+            socket.to(currentRoomId).emit('chatMessage', { peerId: currentPeerId, userId: user.id, name: user.name, message: text, timestamp: new Date() });
+        });
+
+        const relay = (incoming: string, outgoing: string) =>
+            socket.on(incoming, () => {
+                if (currentRoomId) socket.to(currentRoomId).emit(outgoing, { peerId: currentPeerId, userId: user.id, name: user.name });
+            });
+        relay('screenShareStarted', 'screenShareStarted');
+        relay('screenShareStopped', 'screenShareStopped');
+        relay('raiseHand', 'handRaised');
+        relay('lowerHand', 'handLowered');
+
+        const leave = async () => {
+            if (!currentRoomId || !currentPeerId) return;
+            const roomId = currentRoomId;
+            const peerId = currentPeerId;
+            currentRoomId = null;
+            currentPeerId = null;
+            socket.leave(roomId);
+            await videoService.removePeer(roomId, peerId);
+        };
+
+        socket.on('leave', async (_payload: unknown, callback?: unknown) => {
+            try {
+                await leave();
+                ack(callback)({ success: true });
             } catch (error) {
                 logger.error('Leave error:', error);
-                callback({ error: 'Failed to leave room' });
+                ack(callback)({ error: 'Failed to leave room' });
             }
         });
 
-        /**
-         * Disconnect
-         */
         socket.on('disconnect', async () => {
             logger.info(`Client disconnected: ${socket.id}`);
-
-            if (currentRoomId && currentPeerId) {
-                try {
-                    await videoService.removePeer(currentRoomId, currentPeerId);
-                } catch (error) {
-                    logger.error('Disconnect cleanup error:', error);
-                }
-            }
+            await leave().catch((error) => logger.error('Disconnect cleanup error:', error));
         });
     });
 }

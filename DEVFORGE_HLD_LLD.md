@@ -208,3 +208,49 @@ Comprehensive HLD/LLD implementation across major tech stacks:
 26. ✅ **DevForge** (Node.js/TypeScript) - Development platform-specific patterns
 
 The remaining 29+ projects will receive relevant patterns based on their specific domain and requirements, following the Option 2 strategy for comprehensive tech stack coverage without redundant work.
+
+
+## As built (October 2026)
+
+The design above is now implemented as npm workspaces under `backend/`, plus `websocket-server/` and `frontend/`. Every component named in this document exists and is wired into the gateway, docker-compose, Kubernetes and CI. What has and has not been tested end to end is tracked in `PROJECT_STATUS.md`. Below is how each part was realised, and where the result differs from the text above.
+
+### LLD topics
+
+- **Distributed caching:** `backend/shared/src/services/cache/cache.service.ts` provides cache-aside over Redis, with `getOrSet`, TTLs and SCAN-based pattern invalidation. Services also use HTTP caching helpers (`lib/http-cache.ts`).
+- **Rate limiting:** `backend/shared/src/services/rate-limiting/rate-limiting.service.ts` is a token bucket evaluated atomically in Redis with Lua. The gateway applies it to every request, and the credential endpoints have stricter buckets.
+- **Structured logging:** `backend/shared/src/services/structured-logging/structured-logging.service.ts` writes JSON logs. Correlation and request ids are propagated through AsyncLocalStorage and the `X-Correlation-ID` header. Audit-worthy actions are also sent to `audit-service` as `devforge.audit.recorded` events. They are stored in a hash chain, which an admin can verify or export.
+
+### HLD topics
+
+1. **API gateway** (`backend/api-gateway`):
+   - is the only public API and owns the route table (`src/routes.ts`);
+   - verifies JWTs at the edge and forwards the identity as signed internal headers;
+   - provides rate limiting, per-service circuit breakers and WebSocket proxying for Socket.IO, Yjs, graphql-ws and call signalling;
+   - keeps `/internal` endpoints unreachable from outside.
+2. **GraphQL** (`backend/graphql-api`, `backend/graphql-subscriptions`):
+   - Apollo Server 5 at `/graphql` over the services, so every service-side permission still applies; queries and mutations cover users, boards, tasks, sprints, courses, projects, documents, search, notifications and analytics.
+   - The subscriptions (`documentUpdated`, `cardAdded`, `notificationReceived`, `userOnline`, `boardEvents`, …) run over graphql-ws. They are fed by the Redis realtime channel and the event bus, and access is checked per board and per document.
+   - The original design said "Apollo Server or similar". Apollo Server 4 reached end-of-life in January 2026, so v5 is used.
+3. **gRPC** (`backend/grpc-api`):
+   - keeps the original services and methods of `devforge.proto` (Analytics, Editor, Kanban, Auth); the fields added since have new numbers (e.g. `CreateCardRequest.boardId`);
+   - authenticates with `authorization` metadata and runs on port 50051, with HTTP health and metrics on 4021.
+   - Difference: `Analytics.GetAnalytics` returns only the caller's own activity, because analytics-service exposes no per-user statistics for other users. `bounceRate` and `avgSessionDuration` are not tracked and are always 0.
+4. **tRPC** (`backend/trpc-api`): `/trpc` with zod-validated procedures. The original flat procedures keep their names, and newer ones are grouped (`auth`, `documents`, `kanban`, `notifications`, `analytics`).
+5. **Event streaming:** `createEventBus` in the shared library uses Kafka (kafkajs) when `KAFKA_BROKERS` is set. Otherwise it uses Redis Streams with the same topics, consumer groups, retries and dead-letter queues. `backend/kafka-service` provides the operations side: topics, groups, dead-letter inspection and replay, and publishing.
+6. **Search:** `backend/search-service` handles queries (courses with facets and highlighting, people, projects, autocomplete, "did you mean", natural-language filters). `backend/elasticsearch-service` handles index management. The indexes are kept current from domain events.
+7. **Monitoring:**
+   - `backend/monitoring-service` scrapes every service's `/health`, `/ready` and `/metrics`, evaluates alert rules (with email, Slack and webhook notifications, and silencing) and checks the infrastructure.
+   - `monitoring/prometheus/prometheus.yml` scrapes the same endpoints for Prometheus, and docker-compose runs Prometheus too.
+8. **Services:** all services named here exist. Others were added to complete the platform:
+   - project, course, analytics, audit, reporting, backup and email services;
+   - `websocket-server`.
+
+   Specifics:
+   - **Video:** a mediasoup SFU with Socket.IO signalling. Call rooms are kept in Redis and are ad hoc (invite code) or attached to a board, document or project.
+   - **Backups:** pg_dump and mongodump archives with a checksum, stored on S3 or disk, with retention, a scheduled run under a Redis lock, and an admin restore.
+
+### Differences from the text above
+
+- **Data stores:** each service owns its database (PostgreSQL through Prisma with migrations, or MongoDB for analytics and notifications), instead of one shared database.
+- **Kafka is optional** in development; Redis Streams is the fallback transport. In the default setup, Redis also carries realtime fan-out, presence and locks.
+- **Configuration:** the variables in the Configuration section above are still valid. `MONITORING_ENABLED` and `METRICS_PORT` are not used, because every service serves `/metrics` on its own port. See `.env.example`, `docker-compose.yml` and `k8s/base/config.yaml` for the full set.

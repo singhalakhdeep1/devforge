@@ -10,7 +10,7 @@ export interface WorkerConfig {
 }
 
 export interface RouterConfig {
-    mediaCodecs: mediasoupTypes.RtpCodecCapability[];
+    mediaCodecs: mediasoupTypes.RouterRtpCodecCapability[];
 }
 
 export interface WebRtcServerConfig {

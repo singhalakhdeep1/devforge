@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-service
+  labels: { app: kafka-service, app.kubernetes.io/part-of: devforge }
+spec:
+  selector: { app: kafka-service }
+  ports:
+    - name: http
+      port: 4023
+      targetPort: http

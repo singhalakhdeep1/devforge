@@ -1,185 +1,72 @@
-# DevForge - Project Implementation Status
+# DevForge: project status
 
-## ✅ Completion Status: 100%
+_Last updated 2026-10-18._
 
-### Frontend Implementation ✅ COMPLETE
+An earlier version of this file said the project was "100% complete". At that time DevForge was a single Express app with 7 pages, and most of the services named in the design were empty or stubs. This file now records what is actually built and what has actually been checked.
 
-#### Core Application Structure
-- ✅ Next.js 15 with App Router configured
-- ✅ TypeScript configuration with strict mode
-- ✅ Tailwind CSS with custom theme
-- ✅ Responsive design system
-- ✅ Dark mode support
+## Summary
 
-#### Pages (7 Complete)
-- ✅ Landing page (`/`) - Hero section, features, stats
-- ✅ Login page (`/login`) - Authentication form
-- ✅ Signup page (`/signup`) - Registration form
-- ✅ Courses listing (`/courses`) - Course grid with filters
-- ✅ Course detail (`/courses/[id]`) - Full course information
-- ✅ Dashboard (`/dashboard`) - User stats and progress
-- ✅ Profile (`/profile`) - User profile management
+| Area | Built | Checked |
+|---|---|---|
+| Backend services (23 workspaces + shared library) | yes | each typechecks; most verified end to end earlier (see below) |
+| Frontend (41 routes) | yes | typechecks; production build passes |
+| Docker images / compose | yes | `docker compose config` valid; images **not built yet** |
+| Kubernetes manifests | yes | `kubectl kustomize k8s` renders (68 resources); not applied to a cluster |
+| CI workflow | yes | not run on GitHub yet |
+| Full end-to-end test of the running stack | **no** | next step |
 
-#### UI Components (8 Reusable)
-- ✅ Button (multiple variants)
-- ✅ Card (Header, Content, Footer, Title, Description)
-- ✅ Input
-- ✅ Label
-- ✅ Textarea
-- ✅ Badge
-- ✅ Avatar
-- ✅ Progress
+## Backend services
 
-#### State Management & API
-- ✅ Zustand stores (auth, course)
-- ✅ Axios API client with interceptors
-- ✅ Auth API (login, register, logout, refresh)
-- ✅ Course API (CRUD, enrollment, progress)
-- ✅ User API (profile, avatar, password)
-- ✅ Token refresh mechanism
-- ✅ Error handling
+Verified end to end means the service was run against real infrastructure (PostgreSQL, Redis, MongoDB, Elasticsearch, Kafka where relevant) with scripted requests, during the rebuild in October 2026.
 
-### Backend Implementation ✅ COMPLETE
+| Service | Port | State |
+|---|---|---|
+| shared library | — | verified |
+| api-gateway | 4000 | verified; routes for video signalling, backups and graphql-ws added since (typecheck only) |
+| auth-service (2FA, sessions, OAuth) | 4001 | verified |
+| notification-service | 4002 | verified |
+| email-service | 4003 | verified |
+| file-service | 4004 | verified |
+| analytics-service | 4005 | verified |
+| websocket-server | 4006 | verified; presence publishing added since (typecheck only) |
+| course-service | 4007 | verified |
+| editor-service (Yjs) | 4008 | verified; document change events and an internal access endpoint added since |
+| kanban-service | 4009 | verified |
+| payment-service | 4010 | verified with a local Stripe fake; return URLs changed to the new settings page |
+| video-service (mediasoup) | 4011 | rebuilt; typechecks; boots and starts a mediasoup worker on Windows; **calls not tested** |
+| search-service + elasticsearch-service | 4012 / 4018 | verified with real Elasticsearch |
+| project-service | 4013 | verified |
+| audit-service | 4014 | verified |
+| reporting-service | 4015 | written; typechecks; **never run** |
+| backup-service | 4016 | rebuilt; typechecks; **not run** (needs pg_dump / mongodump) |
+| monitoring-service | 4017 | verified |
+| graphql-api + graphql-subscriptions | 4020 | rebuilt (Apollo Server 5, graphql-ws); typechecks; **not run** |
+| grpc-api | 4021 / 50051 | rebuilt; typechecks; **not run** |
+| trpc-api | 4022 | rebuilt; typechecks; **not run** |
+| kafka-service | 4023 | verified on Redis Streams and Kafka |
 
-#### Core Application
-- ✅ Express.js server with TypeScript
-- ✅ Prisma ORM with PostgreSQL
-- ✅ JWT authentication system
-- ✅ Middleware architecture
-- ✅ Error handling
-- ✅ Security (Helmet, CORS, rate limiting)
+## Frontend
 
-#### Controllers (7 Complete)
-- ✅ Auth controller (complete authentication flow)
-- ✅ Course controller (CRUD + enrollment + progress)
-- ✅ User controller (profile, avatar, password)
-- ✅ Discussion controller (forums, answers, upvotes)
-- ✅ Quiz controller (submission, results)
-- ✅ Enrollment controller (create, fetch, cancel)
-- ✅ Editor controller (code execution, snippets)
+Next.js 15 / React 19, talking only to the gateway. Existing learning pages: catalogue, course, lesson player, dashboard, instructor studio, certificates, notifications, profile, code editor and sign-in flows (now with the 2FA step). New pages, written and built but **not yet exercised in a browser against the running services**:
+- projects and project detail (boards, discussion, files, activity, members, settings)
+- teams and team detail, people profiles, activity feed and invitations
+- boards and the Kanban board (drag and drop, live updates, task drawer, sprints and burndown, insights, settings)
+- documents and the collaborative editor (Yjs ↔ Monaco binding, cursors, sharing, snapshots, export)
+- files and search
+- settings: two-factor setup, devices, password, subscription, purchases and refunds, invoices
+- video calls (mediasoup-client)
+- administration: overview, users, monitoring, audit log, backups, system (email, event bus, search engine)
+- reports (admins and instructors)
 
-#### Routes (7 Complete)
-- ✅ Auth routes (8 endpoints)
-- ✅ Course routes (9 endpoints)
-- ✅ User routes (5 endpoints)
-- ✅ Discussion routes (5 endpoints)
-- ✅ Quiz routes (3 endpoints)
-- ✅ Enrollment routes (4 endpoints)
-- ✅ Editor routes (6 endpoints)
+## Known gaps and risks
 
-#### Microservices (17 Services)
-- ✅ API Gateway
-- ✅ Auth Service
-- ✅ Email Service
-- ✅ WebSocket Server
-- ✅ Notification Service
-- ✅ File Service
-- ✅ Analytics Service
-- ✅ Search Service (Elasticsearch)
-- ✅ Video Service (WebRTC)
-- ✅ Editor Service (Collaborative)
-- ✅ Payment Service (Stripe)
-- ✅ Kanban Service
-- ✅ GraphQL API
-- ✅ Audit Service
-- ✅ Backup Service
-- ✅ Monitoring Service
-- ✅ Reporting Service
+- No test of the whole system running together yet. Expect integration bugs in the newer pieces, above all the frontend's new pages, video calls, backups, reports and the GraphQL / gRPC / tRPC layers.
+- The Docker images have not been built yet. In particular, the `DB_TOOLS` variant of `docker/service.Dockerfile` installs PostgreSQL and MongoDB client tools from vendor repositories, and that install is untried.
+- Video calls run all participants of a room on one instance (no SFU cascading). Behind NAT, `MEDIASOUP_ANNOUNCED_IP` must be set.
+- Git history contains about 26 MB of Prisma engine binaries from an early commit. Removing them needs a history rewrite and a force-push.
 
-### Database Schema ✅ COMPLETE
-- ✅ 12+ Prisma models
-- ✅ User management
-- ✅ Course structure
-- ✅ Enrollment system
-- ✅ Progress tracking
-- ✅ Discussion forums
-- ✅ Quiz system
-- ✅ Notifications
+## Next steps
 
-### DevOps & Infrastructure ✅ COMPLETE
-- ✅ Docker configuration
-- ✅ Docker Compose orchestration
-- ✅ Kubernetes manifests
-- ✅ CI/CD pipeline
-- ✅ Monitoring setup (Prometheus)
-- ✅ Environment configuration
-
-## 📊 Final Statistics
-
-### Code Metrics
-- **Total Lines of Code**: ~73,000
-- **Frontend Code**: ~8,000 lines
-- **Backend Code**: ~65,000 lines
-- **TypeScript Files**: 50+
-- **Components**: 8 UI components
-- **Pages**: 7 complete pages
-- **API Endpoints**: 50+ endpoints
-
-### Technology Coverage
-- **Frontend**: Next.js 15, React 19, TypeScript, Tailwind CSS
-- **Backend**: Node.js, Express.js, TypeScript, Prisma
-- **Database**: PostgreSQL, MongoDB, Redis, Elasticsearch
-- **Real-time**: Socket.IO, WebRTC
-- **DevOps**: Docker, Kubernetes, CI/CD
-
-## 🎯 Production Readiness
-
-### Completed Features
-- ✅ User authentication and authorization
-- ✅ Course management system
-- ✅ Enrollment and progress tracking
-- ✅ User dashboard and analytics
-- ✅ Profile management
-- ✅ Discussion forums
-- ✅ Quiz system
-- ✅ Code execution environment
-- ✅ Real-time features
-- ✅ Payment integration
-- ✅ Advanced search
-- ✅ File handling
-- ✅ Email notifications
-- ✅ Monitoring and logging
-
-### Ready for Deployment
-- ✅ All core features implemented
-- ✅ Database schema complete
-- ✅ API endpoints functional
-- ✅ Frontend pages complete
-- ✅ Docker configuration ready
-- ✅ CI/CD pipeline configured
-- ✅ Monitoring setup complete
-
-## 📝 Next Steps for Production
-
-1. **Database Setup**
-   - Run Prisma migrations
-   - Seed initial data
-   - Configure production database
-
-2. **Environment Configuration**
-   - Set production environment variables
-   - Configure secrets management
-   - Set up SSL certificates
-
-3. **Testing**
-   - Run comprehensive test suite
-   - Performance testing
-   - Security audit
-
-4. **Deployment**
-   - Deploy to production servers
-   - Configure domain and DNS
-   - Set up monitoring alerts
-
-## ✅ Conclusion
-
-**DevForge is 100% complete with all core features implemented and ready for production deployment.**
-
-The project demonstrates:
-- Full-stack development expertise
-- Microservices architecture
-- Modern development practices
-- Production-ready code quality
-- Comprehensive feature set
-
-**Status: ✅ PRODUCTION READY**
+1. Bring up the stack (`docker compose up --build`) and fix whatever fails to build or start.
+2. Test end to end through the gateway and in a browser: sign-up through 2FA, courses and payments, a project with a board and a live document, a call between two browsers, files, search, notifications, the admin pages, a backup and a restore, reports, and GraphQL, tRPC and gRPC calls.
+3. Run CI on GitHub and fix what it reports.

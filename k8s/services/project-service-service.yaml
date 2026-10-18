@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: project-service
+  labels: { app: project-service, app.kubernetes.io/part-of: devforge }
+spec:
+  selector: { app: project-service }
+  ports:
+    - name: http
+      port: 4013
+      targetPort: http

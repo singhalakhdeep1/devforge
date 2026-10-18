@@ -121,8 +121,8 @@ router.post(
       ],
       subscription_data: { metadata: { userId: user.id, plan: plan.id } },
       metadata: { userId: user.id, plan: plan.id },
-      success_url: `${cfg.frontendUrl}/profile?subscription=success`,
-      cancel_url: `${cfg.frontendUrl}/profile?subscription=cancelled`,
+      success_url: `${cfg.frontendUrl}/settings?subscribed=1#billing`,
+      cancel_url: `${cfg.frontendUrl}/settings#billing`,
     })
     res.json({ url: session.url })
   })
@@ -174,7 +174,7 @@ router.post(
   asyncHandler(async (req, res) => {
     const customer = await customerOf(me(req).id)
     if (!customer) throw AppError.notFound('No billing profile yet')
-    const session = await stripe().billingPortal.sessions.create({ customer, return_url: `${cfg.frontendUrl}/profile` })
+    const session = await stripe().billingPortal.sessions.create({ customer, return_url: `${cfg.frontendUrl}/settings#billing` })
     res.json({ url: session.url })
   })
 )

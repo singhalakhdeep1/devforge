@@ -1,33 +1,26 @@
 {
-    "name": "@devhub/video-service",
-    "version": "1.0.0",
-    "description": "WebRTC-powered video and audio calling service",
-    "scripts": {
-        "dev": "tsx watch src/index.ts",
-        "build": "tsc",
-        "start": "node dist/index.js",
-        "test": "jest"
-    },
-    "dependencies": {
-        "@devhub/shared": "*",
-        "express": "^4.18.2",
-        "socket.io": "^4.6.1",
-        "redis": "^4.6.12",
-        "dotenv": "^16.3.1",
-        "winston": "^3.11.0",
-        "cors": "^2.8.5",
-        "helmet": "^7.1.0",
-        "mediasoup": "^3.13.7",
-        "mediasoup-client": "^3.7.3",
-        "@prisma/client": "^5.7.1"
-    },
-    "devDependencies": {
-        "@types/express": "^4.17.21",
-        "@types/cors": "^2.8.17",
-        "@types/node": "^20.10.6",
-        "tsx": "^4.7.0",
-        "typescript": "^5.3.3",
-        "prisma": "^5.7.1",
-        "jest": "^29.7.0"
-    }
+  "name": "@devhub/video-service",
+  "version": "2.0.0",
+  "private": true,
+  "description": "WebRTC video and audio calls (mediasoup SFU, Socket.IO signalling)",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@devhub/shared": "*",
+    "express": "^4.21.2",
+    "mediasoup": "^3.15.7",
+    "socket.io": "^4.8.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.17.14",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
 }

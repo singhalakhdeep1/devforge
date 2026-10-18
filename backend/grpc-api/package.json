@@ -1,0 +1,23 @@
+{
+  "name": "@devhub/grpc-api",
+  "version": "2.0.0",
+  "private": true,
+  "description": "gRPC API (Analytics, Editor, Kanban, Auth) over the DevForge services",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@devhub/shared": "*",
+    "@grpc/grpc-js": "^1.12.5",
+    "@grpc/proto-loader": "^0.7.13"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.14",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}

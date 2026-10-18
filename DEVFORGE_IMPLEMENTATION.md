@@ -146,3 +146,18 @@ GRPC_PORT=50051
 - Requires running instances of Elasticsearch and Kafka
 - gRPC requires Protocol Buffers compiler for client generation
 - GraphQL Subscriptions require a WebSocket server (Apollo Server or similar)
+
+
+## As built (October 2026)
+
+The integrations listed above are now complete services, rather than standalone files. The notes in the previous section are out of date: the packages are installed as npm workspaces, and each service runs on its own.
+
+| Integration | Where | What it does now |
+|---|---|---|
+| tRPC | `backend/trpc-api/src/router.ts`, `src/index.ts` | Express adapter at `/trpc` (gateway route), zod inputs, calls the owning services with the caller's identity; original procedures kept, grouped routers added |
+| gRPC | `backend/grpc-api/src/devforge.proto`, `src/server.ts` | `@grpc/grpc-js` + proto-loader on 50051, bearer token in metadata, every method backed by the real service |
+| Elasticsearch | `backend/elasticsearch-service`, `backend/search-service` | index lifecycle, bulk sync from events, search with aggregations, highlighting and autocomplete |
+| Kafka | `backend/shared/src/lib/events.ts`, `backend/kafka-service` | one event bus for all services (Kafka or Redis Streams), consumer groups, retries, dead letters with replay |
+| GraphQL subscriptions | `backend/graphql-subscriptions`, `backend/graphql-api` | graphql-ws on `/graphql`; documents, board cards, notifications, analytics, presence, all permission-checked |
+
+The protocol buffers are loaded at runtime with `@grpc/proto-loader`, so the server needs no compile step. Clients in other languages generate stubs from `devforge.proto` as usual. Testing status: `PROJECT_STATUS.md`.

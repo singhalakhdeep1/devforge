@@ -22,7 +22,13 @@
     "backend/audit-service",
     "backend/monitoring-service",
     "backend/kafka-service",
-    "backend/reporting-service"
+    "backend/reporting-service",
+    "backend/graphql-subscriptions",
+    "backend/graphql-api",
+    "backend/grpc-api",
+    "backend/trpc-api",
+    "backend/backup-service",
+    "backend/video-service"
   ],
   "scripts": {
     "build:shared": "npm run build -w @devhub/shared",

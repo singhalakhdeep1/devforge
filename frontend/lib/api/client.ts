@@ -2,7 +2,7 @@ import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
 import { useAuthStore } from '../store/authStore'
 import type { User } from './types'
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'
+export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'
 /** Origin that serves uploaded files (avatars), e.g. http://localhost:5000 */
 export const FILES_URL = API_URL.replace(/\/api\/?$/, '')
 

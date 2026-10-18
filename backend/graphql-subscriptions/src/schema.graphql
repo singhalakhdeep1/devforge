@@ -1,81 +1,86 @@
-# GraphQL Subscriptions schema for devforge
+# Live updates for DevForge, served by graphql-api over graphql-ws (ws://<gateway>/graphql).
+# Every subscription checks access: you only receive events for boards and documents you can see,
+# and only your own notifications.
+
+scalar JSON
 
 type Subscription {
-  # Document updates
+  "Changes to a document you can view (title, visibility, deletion)."
   documentUpdated(documentId: ID!): DocumentUpdate!
-  documentCreated(userId: ID!): Document!
-  
-  # Kanban updates
+  "Documents created by a user (only your own userId is allowed)."
+  documentCreated(userId: ID!): DocumentUpdate!
+
+  "Kanban: a card was created on a board you can view."
   cardAdded(boardId: ID!): Card!
-  cardUpdated(cardId: ID!): Card!
-  cardDeleted(cardId: ID!): ID!
-  
-  # Notifications
-  notificationReceived(userId: ID!): Notification!
-  
-  # Analytics updates
-  analyticsUpdated(userId: ID!): Analytics!
-  
-  # User presence
-  userOnline(userId: ID!): UserPresence!
-  userOffline(userId: ID!): UserPresence!
+  "Kanban: a card on the board was edited or moved."
+  cardUpdated(boardId: ID!, cardId: ID): Card!
+  "Kanban: a card was deleted; returns its id."
+  cardDeleted(boardId: ID!): ID!
+  "Kanban: every live event on a board (cards, columns, comments, sprints)."
+  boardEvents(boardId: ID!): BoardEvent!
+
+  "Notifications for the signed-in user (userId must be your own)."
+  notificationReceived(userId: ID!): SubscriptionNotification!
+
+  "Analytics events as they are tracked (admins only)."
+  analyticsUpdated(userId: ID): AnalyticsEvent!
+
+  "Presence: a user came online / went offline (any user, or one user when userId is given)."
+  userOnline(userId: ID): UserPresence!
+  userOffline(userId: ID): UserPresence!
 }
 
 type DocumentUpdate {
   documentId: ID!
-  title: String!
-  content: String!
+  action: String!
+  title: String
+  ownerId: ID
+  updatedBy: ID
   updatedAt: String!
-  updatedBy: User!
-}
-
-type Document {
-  id: ID!
-  title: String!
-  content: String!
-  createdAt: String!
-  updatedAt: String!
-  author: User!
 }
 
 type Card {
   id: ID!
-  title: String!
-  description: String!
-  columnId: ID!
-  position: Int!
-  createdAt: String!
-  updatedAt: String!
+  boardId: ID!
+  title: String
+  description: String
+  columnId: ID
+  position: Float
+  priority: String
+  assigneeId: ID
+  updatedAt: String
+  raw: JSON
 }
 
-type Notification {
+type BoardEvent {
+  boardId: ID!
+  type: String!
+  payload: JSON
+}
+
+type SubscriptionNotification {
   id: ID!
   userId: ID!
-  message: String!
-  type: String!
+  type: String
+  title: String
+  message: String
+  link: String
   read: Boolean!
-  createdAt: String!
+  createdAt: String
 }
 
-type Analytics {
-  userId: ID!
-  pageViews: Int!
-  uniqueVisitors: Int!
-  bounceRate: Float!
-  avgSessionDuration: Int!
-  updatedAt: String!
+type AnalyticsEvent {
+  userId: ID
+  type: String!
+  name: String
+  path: String
+  properties: JSON
+  at: String!
 }
 
 type UserPresence {
   userId: ID!
+  name: String
   status: String!
   lastSeen: String!
-  currentDocument: String
-}
-
-type User {
-  id: ID!
-  email: String!
-  name: String!
-  avatar: String
 }

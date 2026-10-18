@@ -30,6 +30,7 @@ export const TOPICS = {
   projectChanged: 'devforge.project.changed',
   taskChanged: 'devforge.task.changed',
   fileUploaded: 'devforge.file.uploaded',
+  documentChanged: 'devforge.document.changed',
   notificationRequested: 'devforge.notification.requested',
   emailRequested: 'devforge.email.requested',
   auditRecorded: 'devforge.audit.recorded',

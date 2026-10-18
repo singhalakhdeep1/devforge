@@ -1,42 +1,326 @@
+# DevForge: the whole platform on one machine.
+#   cp .env.example .env    (set the secrets)
+#   docker compose up --build
+# Web app http://localhost:3000 · API gateway http://localhost:4000 · mail inbox http://localhost:8025
+# · MinIO console http://localhost:9001 · Prometheus http://localhost:9090
+# Kafka is optional: `docker compose --profile kafka up` and set KAFKA_BROKERS=kafka:9092 (Redis Streams otherwise).
+
+x-service: &service
+  restart: unless-stopped
+  env_file:
+    - path: .env
+      required: false
+  depends_on: &infra
+    postgres: { condition: service_healthy }
+    redis: { condition: service_healthy }
+    minio-setup: { condition: service_completed_successfully }
+
+x-build: &build
+  context: .
+  dockerfile: docker/service.Dockerfile
+
+x-env: &env
+  NODE_ENV: production
+  REDIS_URL: redis://redis:6379
+  MONGODB_URI: mongodb://mongo:27017
+  ELASTICSEARCH_URL: http://elasticsearch:9200
+  KAFKA_BROKERS: ${KAFKA_BROKERS:-}
+  FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+  PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:4000}
+  CORS_ORIGIN: ${FRONTEND_URL:-http://localhost:3000}
+  SMTP_HOST: mailpit
+  SMTP_PORT: "1025"
+  S3_ENDPOINT: http://minio:9000
+  S3_REGION: us-east-1
+  AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-devforge}
+  AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-devforge-minio-secret}
+  GATEWAY_SERVICE_URL: http://gateway:4000
+  AUTH_SERVICE_URL: http://auth:4001
+  NOTIFICATION_SERVICE_URL: http://notification:4002
+  EMAIL_SERVICE_URL: http://email:4003
+  FILE_SERVICE_URL: http://file:4004
+  ANALYTICS_SERVICE_URL: http://analytics:4005
+  WEBSOCKET_SERVICE_URL: http://websocket:4006
+  COURSE_SERVICE_URL: http://course:4007
+  EDITOR_SERVICE_URL: http://editor:4008
+  KANBAN_SERVICE_URL: http://kanban:4009
+  PAYMENT_SERVICE_URL: http://payment:4010
+  VIDEO_SERVICE_URL: http://video:4011
+  SEARCH_SERVICE_URL: http://search:4012
+  PROJECT_SERVICE_URL: http://project:4013
+  AUDIT_SERVICE_URL: http://audit:4014
+  REPORTING_SERVICE_URL: http://reporting:4015
+  BACKUP_SERVICE_URL: http://backup:4016
+  MONITORING_SERVICE_URL: http://monitoring:4017
+  ELASTICSEARCH_SERVICE_URL: http://elasticsearch-service:4018
+  GRAPHQL_SERVICE_URL: http://graphql:4020
+  GRPC_SERVICE_URL: http://grpc:4021
+  TRPC_SERVICE_URL: http://trpc:4022
+  KAFKA_SERVICE_URL: http://kafka-service:4023
+
+
 services:
+  # ───────────── infrastructure ─────────────
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
+      POSTGRES_USER: ${POSTGRES_USER:-devforge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devforge}
       POSTGRES_DB: devforge
-      POSTGRES_USER: devforge
-      POSTGRES_PASSWORD: devforge_password
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U devforge -d devforge"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-devforge} -d devforge"]
       interval: 5s
-      timeout: 5s
+      retries: 20
+
+  mongo:
+    image: mongo:8
+    restart: unless-stopped
+    volumes: [mongodata:/data/db]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
       retries: 10
 
-  backend:
-    build: ./backend
-    depends_on:
-      postgres:
-        condition: service_healthy
-    env_file: ./backend/.env
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 20
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://devforge:devforge_password@postgres:5432/devforge
-      FRONTEND_URL: http://localhost:3000
-    ports:
-      - "5000:5000"
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+    volumes: [esdata:/usr/share/elasticsearch/data]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      retries: 30
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-devforge}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-devforge-minio-secret}
+    ports: ["9001:9001"]
+    volumes: [miniodata:/data]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      retries: 20
+
+  minio-setup:
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    depends_on: { minio: { condition: service_healthy } }
+    entrypoint: >
+      sh -c "mc alias set local http://minio:9000 $${MINIO_ROOT_USER:-devforge} $${MINIO_ROOT_PASSWORD:-devforge-minio-secret} &&
+             mc mb --ignore-existing local/devforge-files local/devforge-backups"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-devforge}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-devforge-minio-secret}
+
+  mailpit:
+    image: axllent/mailpit:v1.24
+    restart: unless-stopped
+    ports: ["8025:8025"]
+
+  kafka:
+    profiles: [kafka]
+    image: apache/kafka:3.9.0
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes: [kafkadata:/var/lib/kafka/data]
+
+  prometheus:
+    image: prom/prometheus:v3.2.1
+    restart: unless-stopped
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=15d"]
     volumes:
-      - uploads:/app/uploads
+      - ./monitoring/prometheus:/etc/prometheus:ro
+      - promdata:/prometheus
+    ports: ["9090:9090"]
+
+  # ───────────── edge ─────────────
+  gateway:
+    <<: *service
+    build: { <<: *build, args: { SERVICE: backend/api-gateway } }
+    environment: { <<: *env }
+    ports: ["4000:4000"]
 
   frontend:
     build:
       context: ./frontend
       args:
-        NEXT_PUBLIC_API_URL: http://localhost:5000/api
-    depends_on:
-      - backend
+        NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:4000}/api
+    restart: unless-stopped
+    depends_on: [gateway]
+    ports: ["3000:3000"]
+
+  # ───────────── services with a PostgreSQL database ─────────────
+  auth:
+    <<: *service
+    build: { <<: *build, args: { SERVICE: backend/auth-service } }
+    environment: { <<: *env, AUTH_DATABASE_URL: "postgresql://${POSTGRES_USER:-devforge}:${POSTGRES_PASSWORD:-devforge}@postgres:5432/devforge_auth" }
+
+  course:
+    <<: *service
+    build: { <<: *build, args: { SERVICE: backend/course-service } }
+    environment: { <<: *env, COURSE_DATABASE_URL: "postgresql://${POSTGRES_USER:-devforge}:${POSTGRES_PASSWORD:-devforge}@postgres:5432/devforge_course" }
+
+  payment:
+    <<: *service
+    build: { <<: *build, args: { SERVICE: backend/payment-service } }
+    environment: { <<: *env, PAYMENT_DATABASE_URL: "postgresql://${POSTGRES_USER:-devforge}:${POSTGRES_PASSWORD:-devforge}@postgres:5432/devforge_payment" }
+
+  editor:
+    <<: *service
+    build: { <<: *build, args: { SERVICE: backend/editor-service } }
+    environment: { <<: *env, EDITOR_DATABASE_URL: "postgresql://${POSTGRES_USER:-devforge}:${POSTGRES_PASSWORD:-devforge}@postgres:5432/devforge_editor" }
+
+  file:
+    <<: *service
+    build: { <<: *build, args: { SERVICE: backend/file-service } }
+    environment: { <<: *env, FILE_DATABASE_URL: "postgresql://${POSTGRES_USER:-devforge}:${POSTGRES_PASSWORD:-devforge}@postgres:5432/devforge_file", S3_BUCKET: devforge-files }
+
+  project:
+    <<: *service
+    build: { <<: *build, args: { SERVICE: backend/project-service } }
+    environment: { <<: *env, PROJECT_DATABASE_URL: "postgresql://${POSTGRES_USER:-devforge}:${POSTGRES_PASSWORD:-devforge}@postgres:5432/devforge_project" }
+
+  kanban:
+    <<: *service
+    build: { <<: *build, args: { SERVICE: backend/kanban-service } }
+    environment: { <<: *env, KANBAN_DATABASE_URL: "postgresql://${POSTGRES_USER:-devforge}:${POSTGRES_PASSWORD:-devforge}@postgres:5432/devforge_kanban" }
+
+  audit:
+    <<: *service
+    build: { <<: *build, args: { SERVICE: backend/audit-service } }
+    environment: { <<: *env, AUDIT_DATABASE_URL: "postgresql://${POSTGRES_USER:-devforge}:${POSTGRES_PASSWORD:-devforge}@postgres:5432/devforge_audit" }
+
+  reporting:
+    <<: *service
+    build: { <<: *build, args: { SERVICE: backend/reporting-service } }
+    environment: { <<: *env, REPORTING_DATABASE_URL: "postgresql://${POSTGRES_USER:-devforge}:${POSTGRES_PASSWORD:-devforge}@postgres:5432/devforge_reporting" }
+
+  # ───────────── services on MongoDB, Redis or Elasticsearch ─────────────
+  analytics:
+    <<: *service
+    depends_on: { <<: *infra, mongo: { condition: service_healthy } }
+    build: { <<: *build, args: { SERVICE: backend/analytics-service } }
+    environment: { <<: *env }
+
+  notification:
+    <<: *service
+    depends_on: { <<: *infra, mongo: { condition: service_healthy } }
+    build: { <<: *build, args: { SERVICE: backend/notification-service } }
+    environment: { <<: *env }
+
+  email:
+    <<: *service
+    build: { <<: *build, args: { SERVICE: backend/email-service } }
+    environment: { <<: *env }
+
+  search:
+    <<: *service
+    depends_on: { <<: *infra, elasticsearch: { condition: service_healthy } }
+    build: { <<: *build, args: { SERVICE: backend/search-service } }
+    environment: { <<: *env }
+
+  elasticsearch-service:
+    <<: *service
+    depends_on: { <<: *infra, elasticsearch: { condition: service_healthy } }
+    build: { <<: *build, args: { SERVICE: backend/elasticsearch-service } }
+    environment: { <<: *env }
+
+  websocket:
+    <<: *service
+    build: { <<: *build, args: { SERVICE: websocket-server } }
+    environment: { <<: *env }
+
+  monitoring:
+    <<: *service
+    build: { <<: *build, args: { SERVICE: backend/monitoring-service } }
+    environment: { <<: *env }
+
+  kafka-service:
+    <<: *service
+    build: { <<: *build, args: { SERVICE: backend/kafka-service } }
+    environment: { <<: *env }
+
+  # ───────────── API styles over the services ─────────────
+  graphql:
+    <<: *service
+    build: { <<: *build, args: { SERVICE: backend/graphql-api, DEPS: "backend/shared backend/graphql-subscriptions" } }
+    environment: { <<: *env }
+
+  grpc:
+    <<: *service
+    build: { <<: *build, args: { SERVICE: backend/grpc-api } }
+    environment: { <<: *env }
+    ports: ["50051:50051"]
+
+  trpc:
+    <<: *service
+    build: { <<: *build, args: { SERVICE: backend/trpc-api } }
+    environment: { <<: *env }
+
+  # ───────────── media and operations ─────────────
+  video:
+    <<: *service
+    build: { <<: *build, args: { SERVICE: backend/video-service } }
+    environment:
+      <<: *env
+      RTC_MIN_PORT: "40000"
+      RTC_MAX_PORT: "40100"
+      # the address browsers reach this machine on; 127.0.0.1 works for calls on this computer only
+      MEDIASOUP_ANNOUNCED_IP: ${MEDIASOUP_ANNOUNCED_IP:-127.0.0.1}
     ports:
-      - "3000:3000"
+      - "40000-40100:40000-40100/udp"
+      - "40000-40100:40000-40100/tcp"
+
+  backup:
+    <<: *service
+    depends_on: { <<: *infra, mongo: { condition: service_healthy } }
+    build: { <<: *build, args: { SERVICE: backend/backup-service, DB_TOOLS: "true" } }
+    environment:
+      <<: *env
+      BACKUP_S3_BUCKET: devforge-backups
+      AUTH_DATABASE_URL: "postgresql://${POSTGRES_USER:-devforge}:${POSTGRES_PASSWORD:-devforge}@postgres:5432/devforge_auth"
+      COURSE_DATABASE_URL: "postgresql://${POSTGRES_USER:-devforge}:${POSTGRES_PASSWORD:-devforge}@postgres:5432/devforge_course"
+      PAYMENT_DATABASE_URL: "postgresql://${POSTGRES_USER:-devforge}:${POSTGRES_PASSWORD:-devforge}@postgres:5432/devforge_payment"
+      EDITOR_DATABASE_URL: "postgresql://${POSTGRES_USER:-devforge}:${POSTGRES_PASSWORD:-devforge}@postgres:5432/devforge_editor"
+      FILE_DATABASE_URL: "postgresql://${POSTGRES_USER:-devforge}:${POSTGRES_PASSWORD:-devforge}@postgres:5432/devforge_file"
+      PROJECT_DATABASE_URL: "postgresql://${POSTGRES_USER:-devforge}:${POSTGRES_PASSWORD:-devforge}@postgres:5432/devforge_project"
+      KANBAN_DATABASE_URL: "postgresql://${POSTGRES_USER:-devforge}:${POSTGRES_PASSWORD:-devforge}@postgres:5432/devforge_kanban"
+      AUDIT_DATABASE_URL: "postgresql://${POSTGRES_USER:-devforge}:${POSTGRES_PASSWORD:-devforge}@postgres:5432/devforge_audit"
+      REPORTING_DATABASE_URL: "postgresql://${POSTGRES_USER:-devforge}:${POSTGRES_PASSWORD:-devforge}@postgres:5432/devforge_reporting"
 
 volumes:
   pgdata:
-  uploads:
+  mongodata:
+  redisdata:
+  esdata:
+  miniodata:
+  kafkadata:
+  promdata:

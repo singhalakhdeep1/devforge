@@ -49,11 +49,13 @@ export const routes: Route[] = [
   { prefix: '/api/social', service: 'project', auth: 'optional' },
   { prefix: '/api/boards', service: 'kanban', auth: 'optional' },
   { prefix: '/api/tasks', service: 'kanban', auth: 'optional' },
+  { prefix: '/video/socket.io', service: 'video', ws: true }, // call signalling; authenticates in its own handshake
   { prefix: '/api/video', service: 'video', auth: 'required' },
+  { prefix: '/api/backups', service: 'backup', auth: 'required' },
   { prefix: '/api/reports', service: 'reporting', auth: 'required' },
   { prefix: '/api/audit', service: 'audit', auth: 'required' },
   { prefix: '/socket.io', service: 'websocket', ws: true }, // Socket.IO authenticates in its own handshake
-  { prefix: '/graphql', service: 'graphql', auth: 'optional' },
+  { prefix: '/graphql', service: 'graphql', auth: 'optional', ws: true }, // subscriptions (graphql-ws) send the token in connectionParams
   { prefix: '/trpc', service: 'trpc', auth: 'optional' },
 ]
 

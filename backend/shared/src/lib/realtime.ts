@@ -21,3 +21,23 @@ export async function publishRealtime(message: RealtimeMessage, redis: Redis = g
 }
 
 export const toUser = (userId: string, event: string, payload: unknown) => publishRealtime({ room: `user:${userId}`, event, payload });
+
+/** Presence: the websocket-server keeps open-connection counts per user and announces changes here. */
+export const PRESENCE_CHANNEL = 'devforge:presence';
+export const PRESENCE_KEY = 'devforge:online';
+
+export interface PresenceChange {
+  userId: string;
+  name: string;
+  online: boolean;
+  at: string;
+}
+
+/** Users with at least one open connection (any websocket-server instance). */
+export async function onlineUsers(redis: Redis = getRedis()): Promise<{ userId: string; name: string }[]> {
+  const all = await redis.hgetall(PRESENCE_KEY);
+  return Object.entries(all)
+    .map(([userId, v]) => { const [count, ...name] = v.split('|'); return { userId, name: name.join('|'), count: Number(count) }; })
+    .filter((u) => u.count > 0)
+    .map(({ userId, name }) => ({ userId, name }));
+}

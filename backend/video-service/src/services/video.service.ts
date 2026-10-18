@@ -10,9 +10,15 @@ interface Room {
     createdAt: Date;
 }
 
-interface Peer {
+export interface PeerInfo {
+    userId: string;
+    name?: string;
+}
+
+interface Peer extends PeerInfo {
     id: string;
     socket: any;
+    joinedAt: Date;
     transports: Map<string, mediasoupTypes.WebRtcTransport>;
     producers: Map<string, mediasoupTypes.Producer>;
     consumers: Map<string, mediasoupTypes.Consumer>;
@@ -28,6 +34,8 @@ interface CallStats {
 
 export class VideoService extends EventEmitter {
     private rooms: Map<string, Room> = new Map();
+    /** Routers being created, so two simultaneous joins share one router. */
+    private pending: Map<string, Promise<Room>> = new Map();
     private workers: mediasoupTypes.Worker[];
     private currentWorkerIndex: number = 0;
 
@@ -40,42 +48,33 @@ export class VideoService extends EventEmitter {
      * Create or get a room
      */
     async getOrCreateRoom(roomId: string): Promise<Room> {
-        try {
-            // Return existing room
-            if (this.rooms.has(roomId)) {
-                return this.rooms.get(roomId)!;
-            }
-
-            // Create new room with router
-            const worker = this.getNextWorker();
-            const router = await worker.createRouter(routerConfig);
-
-            const room: Room = {
-                id: roomId,
-                router,
-                peers: new Map(),
-                createdAt: new Date(),
-            };
-
-            this.rooms.set(roomId, room);
-            logger.info(`Created room ${roomId}`);
-
-            return room;
-        } catch (error) {
-            logger.error('Error creating room:', error);
-            throw error;
+        const existing = this.rooms.get(roomId);
+        if (existing) return existing;
+        let creating = this.pending.get(roomId);
+        if (!creating) {
+            creating = (async () => {
+                const router = await this.getNextWorker().createRouter(routerConfig);
+                const room: Room = { id: roomId, router, peers: new Map(), createdAt: new Date() };
+                this.rooms.set(roomId, room);
+                logger.info(`Created room ${roomId}`);
+                return room;
+            })().finally(() => this.pending.delete(roomId));
+            this.pending.set(roomId, creating);
         }
+        return creating;
     }
 
     /**
      * Add peer to room
      */
-    async addPeer(roomId: string, peerId: string, socket: any): Promise<Peer> {
+    async addPeer(roomId: string, peerId: string, socket: any, info: PeerInfo): Promise<Peer> {
         try {
             const room = await this.getOrCreateRoom(roomId);
 
             const peer: Peer = {
                 id: peerId,
+                ...info,
+                joinedAt: new Date(),
                 socket,
                 transports: new Map(),
                 producers: new Map(),
@@ -113,7 +112,7 @@ export class VideoService extends EventEmitter {
             logger.info(`Removed peer ${peerId} from room ${roomId}`);
 
             // Notify other peers
-            this.notifyPeersInRoom(roomId, peerId, 'peerLeft');
+            this.notifyPeersInRoom(roomId, peerId, 'peerLeft', { peerId, userId: peer.userId });
 
             // Delete room if empty
             if (room.peers.size === 0) {
@@ -252,6 +251,9 @@ export class VideoService extends EventEmitter {
                 producerId: producer.id,
                 kind,
                 peerId,
+                userId: peer.userId,
+                name: peer.name,
+                appData,
             });
 
             return { id: producer.id };
@@ -444,6 +446,13 @@ export class VideoService extends EventEmitter {
 
             return {
                 roomId,
+                participants: Array.from(room.peers.values()).map((p) => ({
+                    peerId: p.id,
+                    userId: p.userId,
+                    name: p.name,
+                    joinedAt: p.joinedAt,
+                    producers: Array.from(p.producers.values()).map((pr) => ({ id: pr.id, kind: pr.kind, paused: pr.paused, source: (pr.appData as { source?: string })?.source })),
+                })),
                 peerCount: peers.length,
                 producerCount: producers,
                 consumerCount: consumers,
@@ -465,6 +474,33 @@ export class VideoService extends EventEmitter {
     /**
      * Get peers in room
      */
+    /** Disconnects everyone (the room was closed by its owner). */
+    closeRoom(roomId: string) {
+        const room = this.rooms.get(roomId);
+        if (!room) return;
+        for (const peer of room.peers.values()) {
+            peer.socket.emit('roomClosed', { roomId });
+            peer.socket.disconnect(true);
+        }
+    }
+
+    /** Producers a newly joined peer should consume. */
+    getProducersInRoom(roomId: string, excludePeerId: string) {
+        const room = this.rooms.get(roomId);
+        if (!room) return [];
+        return Array.from(room.peers.values())
+            .filter((p) => p.id !== excludePeerId)
+            .flatMap((p) => Array.from(p.producers.values()).map((pr) => ({ peerId: p.id, userId: p.userId, name: p.name, producerId: pr.id, kind: pr.kind, appData: pr.appData })));
+    }
+
+    hasRoom(roomId: string) {
+        return this.rooms.has(roomId);
+    }
+
+    getPeer(roomId: string, peerId: string) {
+        return this.rooms.get(roomId)?.peers.get(peerId);
+    }
+
     getPeersInRoom(roomId: string): string[] {
         const room = this.rooms.get(roomId);
         return room ? Array.from(room.peers.keys()) : [];

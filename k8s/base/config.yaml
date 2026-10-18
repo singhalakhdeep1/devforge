@@ -1,0 +1,44 @@
+# Non-secret settings shared by every service. Secrets come from devforge-secrets (see secrets.example.env).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: devforge-config
+data:
+  NODE_ENV: production
+  LOG_LEVEL: info
+  REDIS_URL: redis://redis:6379
+  MONGODB_URI: mongodb://mongodb:27017
+  ELASTICSEARCH_URL: http://elasticsearch:9200
+  KAFKA_BROKERS: ""
+  FRONTEND_URL: https://devforge.example.com
+  PUBLIC_API_URL: https://devforge.example.com
+  CORS_ORIGIN: https://devforge.example.com
+  SMTP_HOST: smtp.example.com
+  SMTP_PORT: "587"
+  S3_ENDPOINT: http://minio:9000
+  S3_REGION: us-east-1
+  UPLOAD_DIR: /data/uploads
+  BACKUP_DIR: /data/backups
+  GATEWAY_SERVICE_URL: http://api-gateway:4000
+  AUTH_SERVICE_URL: http://auth-service:4001
+  NOTIFICATION_SERVICE_URL: http://notification-service:4002
+  EMAIL_SERVICE_URL: http://email-service:4003
+  FILE_SERVICE_URL: http://file-service:4004
+  ANALYTICS_SERVICE_URL: http://analytics-service:4005
+  WEBSOCKET_SERVICE_URL: http://websocket-service:4006
+  COURSE_SERVICE_URL: http://course-service:4007
+  EDITOR_SERVICE_URL: http://editor-service:4008
+  KANBAN_SERVICE_URL: http://kanban-service:4009
+  PAYMENT_SERVICE_URL: http://payment-service:4010
+  VIDEO_SERVICE_URL: http://video-service:4011
+  SEARCH_SERVICE_URL: http://search-service:4012
+  PROJECT_SERVICE_URL: http://project-service:4013
+  AUDIT_SERVICE_URL: http://audit-service:4014
+  REPORTING_SERVICE_URL: http://reporting-service:4015
+  BACKUP_SERVICE_URL: http://backup-service:4016
+  MONITORING_SERVICE_URL: http://monitoring-service:4017
+  ELASTICSEARCH_SERVICE_URL: http://elasticsearch-service:4018
+  GRAPHQL_SERVICE_URL: http://graphql-service:4020
+  GRPC_SERVICE_URL: http://grpc-service:4021
+  TRPC_SERVICE_URL: http://trpc-service:4022
+  KAFKA_SERVICE_URL: http://kafka-service:4023

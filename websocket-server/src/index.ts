@@ -1,6 +1,8 @@
 import { createAdapter } from '@socket.io/redis-adapter'
 import { Server, type Socket } from 'socket.io'
 import {
+    PRESENCE_CHANNEL,
+    PRESENCE_KEY,
     REALTIME_CHANNEL,
     createLogger,
     createRedis,
@@ -60,11 +62,26 @@ void startService({
             }
         })
 
+        // Presence: open connections per user, shared by every instance; changes are announced for GraphQL subscribers
+        const presence = createRedis({ name: 'ws-presence' })
+        const announce = (u: { id: string; name: string }, online: boolean) =>
+            presence.publish(PRESENCE_CHANNEL, JSON.stringify({ userId: u.id, name: u.name, online, at: new Date().toISOString() })).catch(() => undefined)
+        const adjust = async (u: { id: string; name: string }, by: 1 | -1) => {
+            const prev = Number(((await presence.hget(PRESENCE_KEY, u.id)) ?? '0').split('|')[0]) || 0
+            const next = Math.max(prev + by, 0)
+            await presence.hset(PRESENCE_KEY, u.id, `${next}|${u.name}`)
+            if ((prev === 0) !== (next === 0)) await announce(u, next > 0)
+        }
+
         io.on('connection', (socket) => {
             const user = socket.data.user as { id: string; name: string; role: string }
             socket.join(`user:${user.id}`) // personal channel: notifications and anything addressed to this user
             websocketConnections.inc({ service: 'websocket' })
-            socket.on('disconnect', () => websocketConnections.dec({ service: 'websocket' }))
+            void adjust(user, 1).catch(() => undefined)
+            socket.on('disconnect', () => {
+                websocketConnections.dec({ service: 'websocket' })
+                void adjust(user, -1).catch(() => undefined)
+            })
             registerEditorHandlers(io, socket, user)
             registerGenericRooms(io, socket, user)
         })

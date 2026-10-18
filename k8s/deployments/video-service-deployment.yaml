@@ -1,0 +1,57 @@
+# video-service: backend/video-service (generated with the rest of k8s/; keep the files in step)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: video-service
+  labels: { app: video-service, app.kubernetes.io/part-of: devforge }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: video-service }
+  template:
+    metadata:
+      labels: { app: video-service, app.kubernetes.io/part-of: devforge }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "4011"
+        prometheus.io/path: /metrics
+    spec:
+      # media (RTP over UDP/TCP 40000-40100) goes straight to the node; calls stay on one replica
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      securityContext: { runAsNonRoot: true, runAsUser: 1000, fsGroup: 1000 }
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: video-service
+          image: devforge/video-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 4011
+              name: http
+          envFrom:
+            - configMapRef: { name: devforge-config }
+            - secretRef: { name: devforge-secrets, optional: false }
+          env:
+            - name: RTC_MIN_PORT
+              value: "40000"
+            - name: RTC_MAX_PORT
+              value: "40100"
+            # browsers must reach this address; replace with the node's public IP behind NAT
+            - name: MEDIASOUP_ANNOUNCED_IP
+              valueFrom: { fieldRef: { fieldPath: status.hostIP } }
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: "1", memory: 1Gi }
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 5
+            failureThreshold: 36
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 15
+          readinessProbe:
+            httpGet: { path: /ready, port: http }
+            periodSeconds: 10
+            failureThreshold: 3
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: false }

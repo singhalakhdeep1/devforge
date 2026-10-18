@@ -2,11 +2,10 @@ apiVersion: v1
 kind: Service
 metadata:
   name: kanban-service
+  labels: { app: kanban-service, app.kubernetes.io/part-of: devforge }
 spec:
-  selector:
-    app: kanban-service
+  selector: { app: kanban-service }
   ports:
-  - protocol: TCP
-    port: 3011
-    targetPort: 3011
-  type: ClusterIP
+    - name: http
+      port: 4009
+      targetPort: http

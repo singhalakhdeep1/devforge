@@ -1,4 +1,6 @@
-import { createEventBus, redisHealthy, startService, TOPICS } from '@devhub/shared'
+import { Router } from 'express'
+import { asyncHandler, createEventBus, internalOnly, redisHealthy, startService, TOPICS } from '@devhub/shared'
+import { loadWithAccess } from './access'
 import codeRouter from './code'
 import { prisma } from './db'
 import { flushAll, startRelay, stats } from './rooms'
@@ -6,6 +8,14 @@ import documents from './routes'
 import { attachWebSocket } from './ws'
 
 let ws: ReturnType<typeof attachWebSocket> | undefined
+
+/** For the GraphQL API: may this user see a document (and its live changes)? */
+const internal = Router()
+internal.use(internalOnly)
+internal.get('/documents/:id/access/:userId', asyncHandler(async (req, res) => {
+  const found = /^[0-9a-f-]{36}$/i.test(req.params.id) ? await loadWithAccess(req.params.id, req.params.userId) : null
+  res.json({ access: found?.access ?? null })
+}))
 
 void startService({
   name: 'editor',
@@ -16,6 +26,7 @@ void startService({
     app.get('/api/editor/stats', (_req, res) => res.json(stats()))
     app.use('/api/editor', documents)
     app.use('/api/editor', codeRouter)
+    app.use('/internal', internal)
   },
   ready: { postgres: () => prisma.$queryRaw`SELECT 1`, redis: () => redisHealthy() },
   onStart: async (server) => {

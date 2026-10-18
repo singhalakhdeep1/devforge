@@ -1,13 +1,17 @@
 import { Router } from 'express'
 import * as Y from 'yjs'
 import { z } from 'zod'
-import { AppError, asyncHandler, authenticate, createServiceClient, userOf, validate } from '@devhub/shared'
+import { AppError, TOPICS, asyncHandler, authenticate, createEventBus, createServiceClient, emit, userOf, validate } from '@devhub/shared'
 import { loadWithAccess } from './access'
 import { prisma } from './db'
 import { currentText, getRoom, openRoom, replaceText } from './rooms'
 
 const router = Router()
 const auth = createServiceClient('auth')
+const bus = createEventBus('editor')
+/** Other services (GraphQL subscriptions, search) learn about document changes from this event. */
+const changed = (action: 'created' | 'updated' | 'deleted', doc: { id: string; title: string; ownerId: string }, userId: string) =>
+  emit(bus, TOPICS.documentChanged, `document.${action}`, { action, id: doc.id, title: doc.title, ownerId: doc.ownerId, userId }, doc.id)
 router.use(authenticate)
 const me = (req: Parameters<typeof userOf>[0]) => userOf(req)!
 
@@ -33,6 +37,7 @@ const createSchema = z.object({
 router.post('/documents', validate(createSchema), asyncHandler(async (req, res) => {
   const doc = await prisma.document.create({ data: { title: req.body.title, language: req.body.language, visibility: req.body.visibility, ownerId: me(req).id } })
   if (req.body.text) await replaceText(doc.id, req.body.text)
+  changed('created', doc, me(req).id)
   res.status(201).json(docJson(await prisma.document.findUniqueOrThrow({ where: { id: doc.id } }), 'owner'))
 }))
 
@@ -59,12 +64,15 @@ router.get('/documents/:id', asyncHandler(async (req, res) => {
 
 router.patch('/documents/:id', validate(createSchema.omit({ text: true }).partial()), asyncHandler(async (req, res) => {
   await mustAccess(req.params.id, me(req).id, 'owner')
-  res.json(docJson(await prisma.document.update({ where: { id: req.params.id }, data: req.body }), 'owner'))
+  const doc = await prisma.document.update({ where: { id: req.params.id }, data: req.body })
+  changed('updated', doc, me(req).id)
+  res.json(docJson(doc, 'owner'))
 }))
 
 router.delete('/documents/:id', asyncHandler(async (req, res) => {
-  await mustAccess(req.params.id, me(req).id, 'owner')
+  const { doc } = await mustAccess(req.params.id, me(req).id, 'owner')
   await prisma.document.delete({ where: { id: req.params.id } })
+  changed('deleted', doc, me(req).id)
   openRoom(req.params.id)?.conns.forEach((_c, ws) => ws.close(4403, 'Document deleted'))
   res.json({ message: 'Document deleted' })
 }))

@@ -1,20 +1,19 @@
-FROM node:20-alpine AS build
+FROM node:20-bookworm-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --no-audit --no-fund
 COPY . .
-# Inlined into the browser bundle at build time
-ARG NEXT_PUBLIC_API_URL=http://localhost:5000/api
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+# Inlined into the browser bundle at build time: the gateway's public /api URL
+ARG NEXT_PUBLIC_API_URL=http://localhost:4000/api
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
-FROM node:20-alpine
+# The standalone output carries its own minimal node_modules
+FROM node:20-bookworm-slim
 WORKDIR /app
-ENV NODE_ENV=production
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
-COPY --from=build /app/.next ./.next
-COPY --from=build /app/next.config.js ./
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
+COPY --from=build --chown=node:node /app/.next/standalone ./
+COPY --from=build --chown=node:node /app/.next/static ./.next/static
 USER node
 EXPOSE 3000
-CMD ["npx", "next", "start", "-p", "3000"]
+CMD ["node", "server.js"]

@@ -147,11 +147,39 @@ function UserMenu() {
             Dashboard
           </Link>
           <Link href="/profile" className={item} onClick={() => setOpen(false)}>
-            Profile &amp; settings
+            Profile
           </Link>
+          <Link href="/settings" className={item} onClick={() => setOpen(false)}>
+            Security &amp; billing
+          </Link>
+          <Link href="/teams" className={item} onClick={() => setOpen(false)}>
+            Teams
+          </Link>
+          <Link href="/feed" className={item} onClick={() => setOpen(false)}>
+            Activity feed
+          </Link>
+          <Link href="/files" className={item} onClick={() => setOpen(false)}>
+            Files
+          </Link>
+          <Link href="/video" className={item} onClick={() => setOpen(false)}>
+            Video calls
+          </Link>
+          <Link href="/search" className={item} onClick={() => setOpen(false)}>
+            Search
+          </Link>
+          {user.role === 'ADMIN' && (
+            <Link href="/admin" className={item} onClick={() => setOpen(false)}>
+              Administration
+            </Link>
+          )}
           {(user.role === 'INSTRUCTOR' || user.role === 'ADMIN') && (
             <Link href="/instructor" className={item} onClick={() => setOpen(false)}>
               Instructor studio
+            </Link>
+          )}
+          {(user.role === 'INSTRUCTOR' || user.role === 'ADMIN') && (
+            <Link href="/reports" className={item} onClick={() => setOpen(false)}>
+              Reports
             </Link>
           )}
           <button onClick={signOut} className={cn(item, 'border-t text-red-600')}>
@@ -170,13 +198,16 @@ export function Navbar() {
   useEffect(() => setMobile(false), [pathname])
 
   // The lesson player and certificate pages use the full screen
-  if (pathname.startsWith('/learn/') || pathname.startsWith('/certificates/')) return null
+  if (pathname.startsWith('/learn/') || pathname.startsWith('/certificates/') || /^\/video\/[^/]+/.test(pathname)) return null
 
   const links = [
     { href: '/courses', label: 'Courses' },
     ...(user
       ? [
           { href: '/dashboard', label: 'My learning' },
+          { href: '/projects', label: 'Projects' },
+          { href: '/boards', label: 'Boards' },
+          { href: '/documents', label: 'Docs' },
           { href: '/editor', label: 'Code editor' },
           ...(user.role !== 'STUDENT' ? [{ href: '/instructor', label: 'Teach' }] : []),
         ]

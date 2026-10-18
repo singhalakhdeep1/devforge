@@ -1,0 +1,67 @@
+# backup-service: backend/backup-service (generated with the rest of k8s/; keep the files in step)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backup-service
+  labels: { app: backup-service, app.kubernetes.io/part-of: devforge }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: backup-service }
+  template:
+    metadata:
+      labels: { app: backup-service, app.kubernetes.io/part-of: devforge }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "4016"
+        prometheus.io/path: /metrics
+    spec:
+      securityContext: { runAsNonRoot: true, runAsUser: 1000, fsGroup: 1000 }
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: backup-service
+          image: devforge/backup-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 4016
+              name: http
+          envFrom:
+            - configMapRef: { name: devforge-config }
+            - secretRef: { name: devforge-secrets, optional: false }
+          env:
+            - name: AUTH_DATABASE_URL
+              valueFrom: { secretKeyRef: { name: devforge-secrets, key: AUTH_DATABASE_URL } }
+            - name: FILE_DATABASE_URL
+              valueFrom: { secretKeyRef: { name: devforge-secrets, key: FILE_DATABASE_URL } }
+            - name: COURSE_DATABASE_URL
+              valueFrom: { secretKeyRef: { name: devforge-secrets, key: COURSE_DATABASE_URL } }
+            - name: EDITOR_DATABASE_URL
+              valueFrom: { secretKeyRef: { name: devforge-secrets, key: EDITOR_DATABASE_URL } }
+            - name: KANBAN_DATABASE_URL
+              valueFrom: { secretKeyRef: { name: devforge-secrets, key: KANBAN_DATABASE_URL } }
+            - name: PAYMENT_DATABASE_URL
+              valueFrom: { secretKeyRef: { name: devforge-secrets, key: PAYMENT_DATABASE_URL } }
+            - name: PROJECT_DATABASE_URL
+              valueFrom: { secretKeyRef: { name: devforge-secrets, key: PROJECT_DATABASE_URL } }
+            - name: AUDIT_DATABASE_URL
+              valueFrom: { secretKeyRef: { name: devforge-secrets, key: AUDIT_DATABASE_URL } }
+            - name: REPORTING_DATABASE_URL
+              valueFrom: { secretKeyRef: { name: devforge-secrets, key: REPORTING_DATABASE_URL } }
+            - name: BACKUP_S3_BUCKET
+              value: devforge-backups
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: "1", memory: 1Gi }
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 5
+            failureThreshold: 36
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 15
+          readinessProbe:
+            httpGet: { path: /ready, port: http }
+            periodSeconds: 10
+            failureThreshold: 3
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: false }

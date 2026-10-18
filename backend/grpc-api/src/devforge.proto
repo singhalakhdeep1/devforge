@@ -1,5 +1,8 @@
 syntax = "proto3";
 
+// DevForge gRPC API. Calls are authenticated with metadata `authorization: Bearer <access token>`
+// (Auth.Login / Auth.Register excepted) and served by the owning services, with their permissions.
+// Fields added after the first version use new numbers, so older clients keep working.
 package devforge;
 
 // Analytics service
@@ -8,17 +11,18 @@ service Analytics {
 }
 
 message GetAnalyticsRequest {
-  string userId = 1;
-  string startDate = 2;
-  string endDate = 3;
+  string userId = 1;     // empty or your own id (only your own activity is readable)
+  string startDate = 2;  // YYYY-MM-DD, default 30 days ago
+  string endDate = 3;    // YYYY-MM-DD, default today
 }
 
 message GetAnalyticsResponse {
   string userId = 1;
   int32 pageViews = 2;
-  int32 uniqueVisitors = 3;
-  double bounceRate = 4;
-  int32 avgSessionDuration = 5;
+  int32 uniqueVisitors = 3;    // days with activity in the range
+  double bounceRate = 4;       // not tracked by DevForge: always 0
+  int32 avgSessionDuration = 5; // not tracked by DevForge: always 0
+  string json = 6;             // the full statistics from analytics-service
 }
 
 // Editor service
@@ -28,9 +32,10 @@ service Editor {
 }
 
 message SaveDocumentRequest {
-  string documentId = 1;
+  string documentId = 1; // empty: create a new document
   string content = 2;
   string title = 3;
+  string language = 4;
 }
 
 message SaveDocumentResponse {
@@ -48,6 +53,8 @@ message GetDocumentResponse {
   string title = 2;
   string content = 3;
   string updatedAt = 4;
+  string language = 5;
+  string access = 6;
 }
 
 // Kanban service
@@ -64,17 +71,30 @@ message GetBoardResponse {
   string boardId = 1;
   string name = 2;
   repeated Column columns = 3;
+  repeated Card cards = 4;
 }
 
 message Column {
   string id = 1;
   string name = 2;
+  int32 taskCount = 3;
+  int32 wipLimit = 4;
+}
+
+message Card {
+  string id = 1;
+  string columnId = 2;
+  string title = 3;
+  string priority = 4;
+  string assigneeId = 5;
 }
 
 message CreateCardRequest {
   string columnId = 1;
   string title = 2;
   string description = 3;
+  string boardId = 4;
+  string priority = 5;
 }
 
 message CreateCardResponse {
@@ -98,11 +118,15 @@ message LoginResponse {
   bool success = 1;
   string token = 2;
   User user = 3;
+  bool requires2FA = 4;
+  string challengeToken = 5;
 }
 
 message User {
   string id = 1;
   string email = 2;
+  string name = 3;
+  string role = 4;
 }
 
 message RegisterRequest {
@@ -116,4 +140,5 @@ message RegisterResponse {
   string userId = 2;
   string email = 3;
   string name = 4;
+  string token = 5;
 }

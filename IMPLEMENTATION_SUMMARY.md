@@ -1,201 +1,53 @@
-# DevForge - Implementation Summary
+# DevForge: implementation summary
 
-## ✅ Project Completion: 100%
+This file replaces an earlier summary that described a single Express backend and called the project 100% complete. For the current state of each part, and what has and has not been tested, see [`PROJECT_STATUS.md`](PROJECT_STATUS.md). For the design, see [`DEVFORGE_HLD_LLD.md`](DEVFORGE_HLD_LLD.md).
 
-### Repository Structure (Cleaned & Professional)
+## How the code is organised
 
 ```
 devforge/
-├── .github/                 # GitHub CI/CD workflows
-├── backend/                 # Backend microservices
-│   ├── src/                # Main Express.js application
-│   │   ├── controllers/    # 7 complete controllers
-│   │   ├── routes/         # 7 complete route files
-│   │   ├── middleware/     # Express middleware
-│   │   └── utils/          # Utility functions
-│   ├── [17 microservices]  # Specialized services
-│   ├── prisma/             # Database schema
-│   └── package.json
-├── frontend/               # Next.js 15 application
-│   ├── app/               # App Router pages (7 pages)
-│   ├── components/        # React components
-│   │   └── ui/           # 8 reusable UI components
-│   ├── lib/              # Utilities & API client
-│   │   ├── api/          # API functions
-│   │   └── store/        # Zustand state management
-│   └── package.json
-├── docs/                 # Documentation
-│   └── architecture/     # Technical documentation
-├── k8s/                  # Kubernetes manifests
-├── monitoring/           # Monitoring configuration
-├── websocket-server/     # Real-time WebSocket server
-├── .env.example         # Environment template
-├── .gitignore           # Git ignore rules
-├── docker-compose.yml   # Docker orchestration
-├── package.json         # Root package configuration
-├── PROJECT_STATUS.md    # Detailed implementation status
-└── README.md           # Main project documentation
+├── backend/
+│   ├── shared/                 @devhub/shared: service bootstrap, auth, event bus, cache, rate limiting,
+│   │                           structured logging, Prometheus metrics, realtime publishing, HTTP client
+│   ├── api-gateway/            the only public API: JWT verification, identity forwarding, rate limits,
+│   │                           circuit breakers, HTTP + WebSocket proxying (routes.ts is the route table)
+│   ├── auth-service/           accounts, sessions, refresh-token rotation, 2FA, OAuth, admin user management
+│   ├── course-service/         catalogue, enrolment, lessons, quizzes, certificates, discussions, studio
+│   ├── payment-service/        Stripe checkout, subscriptions, refunds, invoices, webhook
+│   ├── notification-service/   in-app notifications (MongoDB), preferences
+│   ├── email-service/          BullMQ queue, templates, SMTP / SendGrid / log outbox
+│   ├── file-service/           uploads to S3/MinIO or disk, quotas, public links
+│   ├── analytics-service/      event ingest and reports (MongoDB)
+│   ├── editor-service/         Yjs documents over WebSocket, snapshots, sharing, snippets, code execution
+│   ├── project-service/        projects, teams, invitations, comments, stars, forks, social graph
+│   ├── kanban-service/         boards, columns, tasks, sprints, labels, epics, time, comments
+│   ├── search-service/         Elasticsearch queries; elasticsearch-service/ manages indices
+│   ├── audit-service/          hash-chained audit log
+│   ├── reporting-service/      on-demand and scheduled reports (PDF, XLSX, CSV, JSON)
+│   ├── backup-service/         pg_dump / mongodump archives, retention, restore
+│   ├── monitoring-service/     scrapes every service, alert rules, infrastructure checks
+│   ├── kafka-service/          event bus operations: topics, groups, dead letters, replay
+│   ├── video-service/          mediasoup SFU, call rooms, Socket.IO signalling
+│   ├── graphql-api/            Apollo Server 5 over the services; graphql-subscriptions/ for live data
+│   ├── grpc-api/               devforge.proto (Analytics, Editor, Kanban, Auth) over the services
+│   └── trpc-api/               tRPC router over the services
+├── websocket-server/           Socket.IO hub: per-user and per-resource rooms, presence
+├── frontend/                   Next.js 15 app; lib/api/ holds typed clients for every service
+├── docker/                     shared service Dockerfile, entrypoint (migrations), Postgres init
+├── docker-compose.yml          the whole platform plus its infrastructure
+├── k8s/                        kustomization: base/, deployments/, services/, ingress.yaml
+├── monitoring/prometheus/      scrape configuration and alert rules
+└── .github/workflows/ci.yml    build, migration drift check, frontend build, config validation, images
 ```
 
-## 🎯 Frontend Implementation: 100% Complete
+## Conventions
 
-### Pages (7)
-- ✅ Landing page (`/`) - Hero, features, stats
-- ✅ Login page (`/login`) - Authentication form
-- ✅ Signup page (`/signup`) - Registration form  
-- ✅ Courses listing (`/courses`) - Course grid with filters
-- ✅ Course detail (`/courses/[id]`) - Full course information
-- ✅ Dashboard (`/dashboard`) - User stats and progress
-- ✅ Profile (`/profile`) - User profile management
-
-### UI Components (8)
-- ✅ Button (multiple variants)
-- ✅ Card (Header, Content, Footer, Title, Description)
-- ✅ Input
-- ✅ Label
-- ✅ Textarea
-- ✅ Badge
-- ✅ Avatar
-- ✅ Progress
-
-### State Management & API
-- ✅ Zustand stores (auth, course)
-- ✅ Axios API client with interceptors
-- ✅ Auth API (login, register, logout, refresh)
-- ✅ Course API (CRUD, enrollment, progress)
-- ✅ User API (profile, avatar, password)
-- ✅ Token refresh mechanism
-
-## 🔧 Backend Implementation: 100% Complete
-
-### Controllers (7)
-- ✅ Auth controller (complete authentication flow)
-- ✅ Course controller (CRUD + enrollment + progress)
-- ✅ User controller (profile, avatar, password)
-- ✅ Discussion controller (forums, answers, upvotes)
-- ✅ Quiz controller (submission, results)
-- ✅ Enrollment controller (create, fetch, cancel)
-- ✅ Editor controller (code execution, snippets)
-
-### Routes (7)
-- ✅ Auth routes (8 endpoints)
-- ✅ Course routes (9 endpoints)
-- ✅ User routes (5 endpoints)
-- ✅ Discussion routes (5 endpoints)
-- ✅ Quiz routes (3 endpoints)
-- ✅ Enrollment routes (4 endpoints)
-- ✅ Editor routes (6 endpoints)
-
-### Microservices (17)
-- ✅ API Gateway
-- ✅ Auth Service
-- ✅ Email Service
-- ✅ WebSocket Server
-- ✅ Notification Service
-- ✅ File Service
-- ✅ Analytics Service
-- ✅ Search Service (Elasticsearch)
-- ✅ Video Service (WebRTC)
-- ✅ Editor Service (Collaborative)
-- ✅ Payment Service (Stripe)
-- ✅ Kanban Service
-- ✅ GraphQL API
-- ✅ Audit Service
-- ✅ Backup Service
-- ✅ Monitoring Service
-- ✅ Reporting Service
-
-## 📊 Code Statistics
-
-- **Total Lines of Code**: ~73,000
-- **Frontend**: ~8,000 lines
-- **Backend**: ~65,000 lines
-- **TypeScript Files**: 50+
-- **API Endpoints**: 50+
-- **Database Models**: 12+
-
-## 🚀 Technology Stack
-
-### Frontend
-- Next.js 15 with App Router
-- React 19
-- TypeScript
-- Tailwind CSS
-- Zustand
-- Axios
-
-### Backend
-- Node.js + Express.js
-- TypeScript
-- Prisma ORM
-- PostgreSQL
-- JWT Authentication
-- Socket.IO
-
-### DevOps
-- Docker & Docker Compose
-- Kubernetes
-- CI/CD pipelines
-- Monitoring (Prometheus)
-
-## ✨ Key Features Implemented
-
-- ✅ User authentication & authorization
-- ✅ Course management system
-- ✅ Enrollment & progress tracking
-- ✅ User dashboard & analytics
-- ✅ Profile management
-- ✅ Discussion forums
-- ✅ Quiz system
-- ✅ Code execution environment
-- ✅ Real-time features
-- ✅ Payment integration
-- ✅ Advanced search
-- ✅ File handling
-- ✅ Email notifications
-
-## 📝 Cleaned Up for Professional Review
-
-### Removed (Redundant Items)
-- ❌ 15+ redundant documentation files
-- ❌ Unused frontend components (5 files)
-- ❌ Test configuration files (until needed)
-- ❌ CLI tools (not core functionality)
-- ❌ Edge functions (not essential)
-- ❌ E2E test setup (can be added later)
-- ❌ Duplicate status files
-- ❌ Setup scripts (use standard npm commands)
-
-### Organized
-- ✅ Documentation moved to `docs/architecture/`
-- ✅ Clean root directory structure
-- ✅ Professional README.md
-- ✅ Updated package.json scripts
-- ✅ Proper .gitignore configuration
-- ✅ Environment templates provided
-
-## 🎯 Production Ready
-
-The repository is now clean, professional, and ready for hiring manager review with:
-
-1. **Clean Structure**: No redundant files or clutter
-2. **Professional Documentation**: Clear, concise README
-3. **Complete Implementation**: All core features functional
-4. **Modern Stack**: Latest technologies and best practices
-5. **Scalable Architecture**: Microservices for growth
-6. **DevOps Ready**: Docker, Kubernetes, CI/CD configured
-
-## 📋 Quick Start for Review
-
-```bash
-# Install dependencies
-npm run install:all
-
-# Start development
-npm run dev
-
-# Or use Docker
-npm run docker:up
-```
-
-**Status: ✅ 100% COMPLETE & PROFESSIONAL**
+- **Data:** each service owns its database: PostgreSQL through Prisma with committed migrations, or MongoDB for analytics and notifications. No service reads another service's tables.
+- **Identity:**
+  - The gateway verifies the access token and forwards `x-user-id`, `x-user-role`, `x-user-email` and `x-user-name` together with `x-internal-key`.
+  - Services trust those headers only when the internal key matches. Direct calls fall back to the bearer token.
+- **Service-to-service calls:** they go through `createServiceClient(name)`. Internal endpoints live under `/internal` and are never routed by the gateway.
+- **Events:** domain events go on the `devforge.*` topics, over Kafka when `KAFKA_BROKERS` is set and Redis Streams otherwise. Consumers use groups, and failed events go to `<topic>.dlq`.
+- **Live updates:** `publishRealtime({ room, event, payload })` goes to the websocket server through Redis, which delivers to rooms such as `user:<id>` and `board:<id>`.
+- **Service endpoints:** every service exposes `/health`, `/ready` (with dependency checks) and `/metrics`.
+- **Language:** everything is TypeScript. Files containing JSX use `.tsx`.

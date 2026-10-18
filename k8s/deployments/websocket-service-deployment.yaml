@@ -1,0 +1,45 @@
+# websocket-service: websocket-server (generated with the rest of k8s/; keep the files in step)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: websocket-service
+  labels: { app: websocket-service, app.kubernetes.io/part-of: devforge }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: websocket-service }
+  template:
+    metadata:
+      labels: { app: websocket-service, app.kubernetes.io/part-of: devforge }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "4006"
+        prometheus.io/path: /metrics
+    spec:
+      securityContext: { runAsNonRoot: true, runAsUser: 1000, fsGroup: 1000 }
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: websocket-service
+          image: devforge/websocket-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 4006
+              name: http
+          envFrom:
+            - configMapRef: { name: devforge-config }
+            - secretRef: { name: devforge-secrets, optional: false }
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: "1", memory: 512Mi }
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 5
+            failureThreshold: 36
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 15
+          readinessProbe:
+            httpGet: { path: /ready, port: http }
+            periodSeconds: 10
+            failureThreshold: 3
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: false }

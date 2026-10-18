@@ -1,0 +1,20 @@
+{
+  "name": "@devhub/graphql-subscriptions",
+  "version": "2.0.0",
+  "private": true,
+  "description": "GraphQL subscription schema and resolvers (boards, documents, notifications, analytics, presence) fed by Redis and the event bus",
+  "main": "dist/resolvers.js",
+  "types": "dist/resolvers.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@devhub/shared": "*",
+    "graphql-subscriptions": "^2.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.14",
+    "typescript": "^5.7.3"
+  }
+}

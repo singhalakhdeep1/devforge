@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch-service
+  labels: { app: elasticsearch-service, app.kubernetes.io/part-of: devforge }
+spec:
+  selector: { app: elasticsearch-service }
+  ports:
+    - name: http
+      port: 4018
+      targetPort: http

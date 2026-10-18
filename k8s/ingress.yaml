@@ -1,34 +1,30 @@
+# Public entry: the web app at /, everything the API gateway owns under its prefixes. Services are
+# never exposed directly; the gateway authenticates and routes. WebSockets (Socket.IO, Yjs, graphql-ws,
+# call signalling) need the long timeouts below. Media for calls bypasses the ingress (video-service
+# uses the node's network on ports 40000-40100).
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: devforge-ingress
+  name: devforge
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/proxy-body-size: 110m
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    cert-manager.io/cluster-issuer: letsencrypt
 spec:
   ingressClassName: nginx
+  tls:
+    - hosts: [devforge.example.com]
+      secretName: devforge-tls
   rules:
-  - host: devforge.local
-    http:
-      paths:
-      - path: /api/auth
-        pathType: Prefix
-        backend:
-          service:
-            name: auth-service
-            port:
-              number: 4001
-      - path: /api/notify
-        pathType: Prefix
-        backend:
-          service:
-            name: notification-service
-            port:
-              number: 4002
-      - path: /api/kanban
-        pathType: Prefix
-        backend:
-          service:
-            name: kanban-service
-            port:
-              number: 3011
+    - host: devforge.example.com
+      http:
+        paths:
+          - { path: /api, pathType: Prefix, backend: { service: { name: api-gateway, port: { number: 4000 } } } }
+          - { path: /uploads, pathType: Prefix, backend: { service: { name: api-gateway, port: { number: 4000 } } } }
+          - { path: /ws, pathType: Prefix, backend: { service: { name: api-gateway, port: { number: 4000 } } } }
+          - { path: /socket.io, pathType: Prefix, backend: { service: { name: api-gateway, port: { number: 4000 } } } }
+          - { path: /video/socket.io, pathType: Prefix, backend: { service: { name: api-gateway, port: { number: 4000 } } } }
+          - { path: /graphql, pathType: Prefix, backend: { service: { name: api-gateway, port: { number: 4000 } } } }
+          - { path: /trpc, pathType: Prefix, backend: { service: { name: api-gateway, port: { number: 4000 } } } }
+          - { path: /, pathType: Prefix, backend: { service: { name: frontend, port: { number: 3000 } } } }

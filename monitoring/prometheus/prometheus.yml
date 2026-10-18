@@ -1,221 +1,154 @@
+# Scrapes /metrics of every DevForge service (hostnames as in docker-compose.yml; in Kubernetes the
+# Service names are the same). Alerting itself is done by monitoring-service, which reads the same
+# endpoints; these rules are for dashboards and an optional Alertmanager.
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
   external_labels:
-    cluster: 'devhub-production'
-    environment: 'production'
+    cluster: devforge
 
-# Alertmanager configuration
-alerting:
-  alertmanagers:
-    - static_configs:
-        - targets:
-            - alertmanager:9093
-
-# Load rules once and periodically evaluate them
 rule_files:
-  - '/etc/prometheus/rules/*.yml'
+  - /etc/prometheus/rules/*.yml
 
-# Scrape configurations
 scrape_configs:
-  # Prometheus itself
-  - job_name: 'prometheus'
+  - job_name: prometheus
     static_configs:
-      - targets: ['localhost:9090']
+      - targets: [localhost:9090]
 
-  # Node exporter for system metrics
-  - job_name: 'node-exporter'
+  - job_name: api-gateway
+    metrics_path: /metrics
     static_configs:
-      - targets: ['node-exporter:9100']
+      - targets: [gateway:4000]
+        labels: { service: api-gateway, tier: gateway }
 
-  # Backend services
-  - job_name: 'api-gateway'
-    metrics_path: '/metrics'
+  - job_name: auth-service
+    metrics_path: /metrics
     static_configs:
-      - targets: ['api-gateway:3000']
-        labels:
-          service: 'api-gateway'
-          tier: 'gateway'
+      - targets: [auth:4001]
+        labels: { service: auth-service, tier: backend }
 
-  - job_name: 'auth-service'
-    metrics_path: '/metrics'
+  - job_name: notification-service
+    metrics_path: /metrics
     static_configs:
-      - targets: ['auth-service:3001']
-        labels:
-          service: 'auth-service'
-          tier: 'backend'
+      - targets: [notification:4002]
+        labels: { service: notification-service, tier: backend }
 
-  - job_name: 'email-service'
-    metrics_path: '/metrics'
+  - job_name: email-service
+    metrics_path: /metrics
     static_configs:
-      - targets: ['email-service:3002']
-        labels:
-          service: 'email-service'
-          tier: 'backend'
+      - targets: [email:4003]
+        labels: { service: email-service, tier: backend }
 
-  - job_name: 'notification-service'
-    metrics_path: '/metrics'
+  - job_name: file-service
+    metrics_path: /metrics
     static_configs:
-      - targets: ['notification-service:3003']
-        labels:
-          service: 'notification-service'
-          tier: 'backend'
+      - targets: [file:4004]
+        labels: { service: file-service, tier: backend }
 
-  - job_name: 'file-service'
-    metrics_path: '/metrics'
+  - job_name: analytics-service
+    metrics_path: /metrics
     static_configs:
-      - targets: ['file-service:3004']
-        labels:
-          service: 'file-service'
-          tier: 'backend'
+      - targets: [analytics:4005]
+        labels: { service: analytics-service, tier: backend }
 
-  - job_name: 'analytics-service'
-    metrics_path: '/metrics'
+  - job_name: websocket-service
+    metrics_path: /metrics
     static_configs:
-      - targets: ['analytics-service:3005']
-        labels:
-          service: 'analytics-service'
-          tier: 'backend'
+      - targets: [websocket:4006]
+        labels: { service: websocket-service, tier: realtime }
 
-  - job_name: 'search-service'
-    metrics_path: '/metrics'
+  - job_name: course-service
+    metrics_path: /metrics
     static_configs:
-      - targets: ['search-service:3006']
-        labels:
-          service: 'search-service'
-          tier: 'backend'
+      - targets: [course:4007]
+        labels: { service: course-service, tier: backend }
 
-  - job_name: 'video-service'
-    metrics_path: '/metrics'
+  - job_name: editor-service
+    metrics_path: /metrics
     static_configs:
-      - targets: ['video-service:3007']
-        labels:
-          service: 'video-service'
-          tier: 'backend'
+      - targets: [editor:4008]
+        labels: { service: editor-service, tier: realtime }
 
-  - job_name: 'editor-service'
-    metrics_path: '/metrics'
+  - job_name: kanban-service
+    metrics_path: /metrics
     static_configs:
-      - targets: ['editor-service:3008']
-        labels:
-          service: 'editor-service'
-          tier: 'backend'
+      - targets: [kanban:4009]
+        labels: { service: kanban-service, tier: backend }
 
-  - job_name: 'payment-service'
-    metrics_path: '/metrics'
+  - job_name: payment-service
+    metrics_path: /metrics
     static_configs:
-      - targets: ['payment-service:3009']
-        labels:
-          service: 'payment-service'
-          tier: 'backend'
+      - targets: [payment:4010]
+        labels: { service: payment-service, tier: backend }
 
-  - job_name: 'kanban-service'
-    metrics_path: '/metrics'
+  - job_name: video-service
+    metrics_path: /metrics
     static_configs:
-      - targets: ['kanban-service:3010']
-        labels:
-          service: 'kanban-service'
-          tier: 'backend'
+      - targets: [video:4011]
+        labels: { service: video-service, tier: realtime }
 
-  - job_name: 'graphql-api'
-    metrics_path: '/metrics'
+  - job_name: search-service
+    metrics_path: /metrics
     static_configs:
-      - targets: ['graphql-api:4000']
-        labels:
-          service: 'graphql-api'
-          tier: 'api'
+      - targets: [search:4012]
+        labels: { service: search-service, tier: backend }
 
-  - job_name: 'websocket-server'
-    metrics_path: '/metrics'
+  - job_name: project-service
+    metrics_path: /metrics
     static_configs:
-      - targets: ['websocket-server:8080']
-        labels:
-          service: 'websocket-server'
-          tier: 'realtime'
+      - targets: [project:4013]
+        labels: { service: project-service, tier: backend }
 
-  # Frontend metrics
-  - job_name: 'frontend'
-    metrics_path: '/api/metrics'
+  - job_name: audit-service
+    metrics_path: /metrics
     static_configs:
-      - targets: ['frontend:3000']
-        labels:
-          service: 'frontend'
-          tier: 'frontend'
+      - targets: [audit:4014]
+        labels: { service: audit-service, tier: backend }
 
-  # Infrastructure
-  - job_name: 'postgres-exporter'
+  - job_name: reporting-service
+    metrics_path: /metrics
     static_configs:
-      - targets: ['postgres-exporter:9187']
-        labels:
-          service: 'postgres'
-          tier: 'database'
+      - targets: [reporting:4015]
+        labels: { service: reporting-service, tier: backend }
 
-  - job_name: 'mongodb-exporter'
+  - job_name: backup-service
+    metrics_path: /metrics
     static_configs:
-      - targets: ['mongodb-exporter:9216']
-        labels:
-          service: 'mongodb'
-          tier: 'database'
+      - targets: [backup:4016]
+        labels: { service: backup-service, tier: operations }
 
-  - job_name: 'redis-exporter'
+  - job_name: monitoring-service
+    metrics_path: /metrics
     static_configs:
-      - targets: ['redis-exporter:9121']
-        labels:
-          service: 'redis'
-          tier: 'cache'
+      - targets: [monitoring:4017]
+        labels: { service: monitoring-service, tier: operations }
 
-  - job_name: 'elasticsearch-exporter'
+  - job_name: elasticsearch-service
+    metrics_path: /metrics
     static_configs:
-      - targets: ['elasticsearch-exporter:9114']
-        labels:
-          service: 'elasticsearch'
-          tier: 'search'
+      - targets: [elasticsearch-service:4018]
+        labels: { service: elasticsearch-service, tier: operations }
 
-  # Kubernetes monitoring (when deployed to K8s)
-  - job_name: 'kubernetes-apiservers'
-    kubernetes_sd_configs:
-      - role: endpoints
-    scheme: https
-    tls_config:
-      ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-    bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
-    relabel_configs:
-      - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
-        action: keep
-        regex: default;kubernetes;https
+  - job_name: graphql-service
+    metrics_path: /metrics
+    static_configs:
+      - targets: [graphql:4020]
+        labels: { service: graphql-service, tier: api }
 
-  - job_name: 'kubernetes-nodes'
-    kubernetes_sd_configs:
-      - role: node
-    scheme: https
-    tls_config:
-      ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-    bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
-    relabel_configs:
-      - action: labelmap
-        regex: __meta_kubernetes_node_label_(.+)
+  - job_name: grpc-service
+    metrics_path: /metrics
+    static_configs:
+      - targets: [grpc:4021]
+        labels: { service: grpc-service, tier: api }
 
-  - job_name: 'kubernetes-pods'
-    kubernetes_sd_configs:
-      - role: pod
-    relabel_configs:
-      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
-        action: keep
-        regex: true
-      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
-        action: replace
-        target_label: __metrics_path__
-        regex: (.+)
-      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
-        action: replace
-        regex: ([^:]+)(?::\d+)?;(\d+)
-        replacement: $1:$2
-        target_label: __address__
-      - action: labelmap
-        regex: __meta_kubernetes_pod_label_(.+)
-      - source_labels: [__meta_kubernetes_namespace]
-        action: replace
-        target_label: kubernetes_namespace
-      - source_labels: [__meta_kubernetes_pod_name]
-        action: replace
-        target_label: kubernetes_pod_name
+  - job_name: trpc-service
+    metrics_path: /metrics
+    static_configs:
+      - targets: [trpc:4022]
+        labels: { service: trpc-service, tier: api }
+
+  - job_name: kafka-service
+    metrics_path: /metrics
+    static_configs:
+      - targets: [kafka-service:4023]
+        labels: { service: kafka-service, tier: operations }
